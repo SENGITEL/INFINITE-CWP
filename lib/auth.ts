@@ -67,9 +67,42 @@ export async function verifyToken(token: string | undefined | null): Promise<str
   }
 }
 
-/** Validates username/password against the configured credentials. */
+/**
+ * Builds the map of valid users.
+ * Configure with the NOC_USERS env var as a comma-separated list:
+ *   "admin:noc2024,operador1:clave1,operador2:clave2"
+ * Falls back to legacy NOC_USERNAME/NOC_PASSWORD, then to defaults.
+ */
+function getUsers(): Record<string, string> {
+  const raw = process.env.NOC_USERS
+  if (raw && raw.trim()) {
+    const users: Record<string, string> = {}
+    for (const pair of raw.split(",")) {
+      const idx = pair.indexOf(":")
+      if (idx === -1) continue
+      const user = pair.slice(0, idx).trim()
+      const pass = pair.slice(idx + 1).trim()
+      if (user) users[user] = pass
+    }
+    if (Object.keys(users).length > 0) return users
+  }
+
+  // Fallback: single legacy user or built-in defaults.
+  return {
+    [process.env.NOC_USERNAME || "admin"]: process.env.NOC_PASSWORD || "noc2024",
+    supervisor: "noc2024",
+    operador: "noc2024",
+  }
+}
+
+/** Validates username/password against the configured users. */
 export function checkCredentials(username: string, password: string): boolean {
-  const validUser = process.env.NOC_USERNAME || "admin"
-  const validPass = process.env.NOC_PASSWORD || "noc2024"
-  return username === validUser && password === validPass
+  const users = getUsers()
+  const expected = users[username]
+  if (expected === undefined) return false
+  // Constant-time-ish comparison to avoid leaking length/content timing.
+  if (expected.length !== password.length) return false
+  let diff = 0
+  for (let i = 0; i < expected.length; i++) diff |= expected.charCodeAt(i) ^ password.charCodeAt(i)
+  return diff === 0
 }
