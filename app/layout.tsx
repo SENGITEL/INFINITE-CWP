@@ -3,8 +3,8 @@ import type { Metadata, Viewport } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'v0 App',
-  description: 'Created with v0',
+  title: 'NOC CWP · Bitácora',
+  description: 'Bitácora del Centro de Operaciones de Red (NOC CWP)',
   generator: 'v0.app',
   icons: {
     icon: [
