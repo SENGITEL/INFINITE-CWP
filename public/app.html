@@ -490,6 +490,17 @@
   .copy-btn:hover{ color:var(--accent); border-color:var(--accent-dim); background:var(--panel-3); }
   .copy-btn.copied{ color:var(--accent); border-color:var(--accent-dim); }
 
+  /* Insignia compacta para celdas con texto largo (Observación, Teams):
+     en vez de expandir la celda, se muestra una palomita y el texto completo
+     aparece como tooltip nativo al pasar el mouse. */
+  .text-flag{
+    display:inline-flex; align-items:center; gap:4px; padding:2px 7px; border-radius:5px;
+    font-size:10.5px; font-weight:700; font-family:var(--font-mono); white-space:nowrap;
+    background:var(--accent-bg, rgba(46,232,212,0.12)); color:var(--accent);
+    border:1px solid var(--accent-dim); cursor:help;
+  }
+  .text-flag::before{ content:"✓"; }
+
   .empty-state{
     padding:60px 20px; text-align:center; color:var(--text-faint); font-family:var(--font-mono); font-size:13px;
   }
@@ -1405,6 +1416,22 @@ function dashHl(v, term){
   return v && String(v).trim() !== '' ? highlightText(v, term) : '<span class="empty-dash">—</span>';
 }
 
+// Para celdas de texto largo (Observación, Teams): si el texto supera el umbral,
+// se reemplaza por una palomita compacta con el texto completo en el tooltip (title),
+// evitando que la celda/columna se expanda. Los textos cortos se muestran normal
+// (y siguen resaltando coincidencias de búsqueda).
+function compactTextHtml(v, term, threshold){
+  const text = v && String(v).trim() !== '' ? String(v) : '';
+  if(text === '') return '<span class="empty-dash">—</span>';
+  const limit = threshold || 40;
+  const q = (term||'').trim();
+  // Si hay una búsqueda activa y coincide dentro del texto, se muestra completo
+  // y resaltado para no ocultar el resultado de la búsqueda.
+  if(q !== '' && text.toLowerCase().includes(q.toLowerCase())) return highlightText(text, term);
+  if(text.length <= limit) return highlightText(text, term);
+  return `<span class="text-flag" title="${escapeHtml(text)}">Texto</span>`;
+}
+
 /* ---------------- KPI BAR ---------------- */
 
 function updateKpis(){
@@ -1610,7 +1637,7 @@ function render(){
         <td class="mono" style="color:var(--text); font-weight:600;">${dashHl(r.serviceId, searchTerm)}</td>
         <td class="obs-text">${dash(r.nombreSitio)}</td>
         <td>${procesoHtml}</td>
-        <td class="obs-text">${dashHl(r.observacion, searchTerm)}</td>
+        <td class="obs-text">${compactTextHtml(r.observacion, searchTerm)}</td>
         <td>${r.vip === 'SI' ? '<span class="vip-si">SÍ</span>' : '<span class="vip-no">NO</span>'}</td>
         <td>${siteInfo ? dash(siteInfo.baterias) : '<span class="empty-dash">—</span>'}</td>
         <td>${siteInfo ? dash(siteInfo.generador) : '<span class="empty-dash">—</span>'}</td>
@@ -1628,7 +1655,7 @@ function render(){
         </td>
         <td class="obs-text" style="max-width:260px;">
           ${r.teams
-            ? `<div class="copy-cell"><span style="white-space:pre-wrap;">${escapeHtml(r.teams)}</span><button type="button" class="copy-btn" data-copy="${escapeHtml(r.teams)}" title="Copiar">📋</button></div>`
+            ? `<div class="copy-cell"><span class="text-flag" title="${escapeHtml(r.teams)}">Texto</span><button type="button" class="copy-btn" data-copy="${escapeHtml(r.teams)}" title="Copiar">📋</button></div>`
             : '<span class="empty-dash">—</span>'}
         </td>
       </tr>
@@ -1668,7 +1695,7 @@ function render(){
         </td>
         <td class="obs-text">${siteNames.length ? escapeHtml(siteNames.length > 2 ? `${siteNames.slice(0,2).join(', ')} +${siteNames.length-2}` : siteNames.join(', ')) : '<span class="empty-dash">—</span>'}</td>
         <td>${procesoHtml}</td>
-        <td class="obs-text">${dashHl(first.observacion, searchTerm)}</td>
+        <td class="obs-text">${compactTextHtml(first.observacion, searchTerm)}</td>
         <td>${vipCount>0 ? `<span class="vip-si">SÍ (${vipCount})</span>` : '<span class="vip-no">NO</span>'}</td>
         <td><span class="empty-dash">—</span></td>
         <td><span class="empty-dash">—</span></td>
