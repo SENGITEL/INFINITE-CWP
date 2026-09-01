@@ -490,24 +490,6 @@
   .copy-btn:hover{ color:var(--accent); border-color:var(--accent-dim); background:var(--panel-3); }
   .copy-btn.copied{ color:var(--accent); border-color:var(--accent-dim); }
 
-  /* Recorta textos largos (Observación / Teams) a 3 líneas y los expande al pasar el mouse */
-  .clamp{
-    display:-webkit-box;
-    -webkit-box-orient:vertical;
-    -webkit-line-clamp:3;
-    line-clamp:3;
-    overflow:hidden;
-    max-width:260px;
-    cursor:help;
-    white-space:pre-wrap;
-    word-break:break-word;
-  }
-  td:hover .clamp{
-    -webkit-line-clamp:unset;
-    line-clamp:unset;
-    overflow:visible;
-  }
-
   .empty-state{
     padding:60px 20px; text-align:center; color:var(--text-faint); font-family:var(--font-mono); font-size:13px;
   }
@@ -1628,7 +1610,7 @@ function render(){
         <td class="mono" style="color:var(--text); font-weight:600;">${dashHl(r.serviceId, searchTerm)}</td>
         <td class="obs-text">${dash(r.nombreSitio)}</td>
         <td>${procesoHtml}</td>
-        <td class="obs-text"><div class="clamp">${dashHl(r.observacion, searchTerm)}</div></td>
+        <td class="obs-text">${dashHl(r.observacion, searchTerm)}</td>
         <td>${r.vip === 'SI' ? '<span class="vip-si">SÍ</span>' : '<span class="vip-no">NO</span>'}</td>
         <td>${siteInfo ? dash(siteInfo.baterias) : '<span class="empty-dash">—</span>'}</td>
         <td>${siteInfo ? dash(siteInfo.generador) : '<span class="empty-dash">—</span>'}</td>
@@ -1646,7 +1628,7 @@ function render(){
         </td>
         <td class="obs-text" style="max-width:260px;">
           ${r.teams
-            ? `<div class="copy-cell"><span class="clamp">${escapeHtml(r.teams)}</span><button type="button" class="copy-btn" data-copy="${escapeHtml(r.teams)}" title="Copiar">📋</button></div>`
+            ? `<div class="copy-cell"><span style="white-space:pre-wrap;">${escapeHtml(r.teams)}</span><button type="button" class="copy-btn" data-copy="${escapeHtml(r.teams)}" title="Copiar">📋</button></div>`
             : '<span class="empty-dash">—</span>'}
         </td>
       </tr>
@@ -1686,7 +1668,7 @@ function render(){
         </td>
         <td class="obs-text">${siteNames.length ? escapeHtml(siteNames.length > 2 ? `${siteNames.slice(0,2).join(', ')} +${siteNames.length-2}` : siteNames.join(', ')) : '<span class="empty-dash">—</span>'}</td>
         <td>${procesoHtml}</td>
-        <td class="obs-text"><div class="clamp">${dashHl(first.observacion, searchTerm)}</div></td>
+        <td class="obs-text">${dashHl(first.observacion, searchTerm)}</td>
         <td>${vipCount>0 ? `<span class="vip-si">SÍ (${vipCount})</span>` : '<span class="vip-no">NO</span>'}</td>
         <td><span class="empty-dash">—</span></td>
         <td><span class="empty-dash">—</span></td>
