@@ -486,6 +486,28 @@
   .escalate-menu button[data-esc-opt="ESCALADO A IP"]:hover{ color:var(--escip); background:var(--escip-bg); }
   .escalate-menu button[data-esc-opt="ESCALADO A DWDM"]:hover{ color:var(--escdwdm); background:var(--escdwdm-bg); }
 
+  /* Celda de Id clickeable: color según el estado eléctrico del sitio (proceso/estado)
+     y menú flotante para cambiarlo con un clic. */
+  .id-cell{ cursor:pointer; transition:.12s ease; border-radius:5px; padding:2px 5px; margin:-2px -5px; display:inline-block; }
+  .id-cell:hover{ background:var(--panel-3); }
+  .id-color-mg{ color:var(--blue); }
+  .id-color-generador{ color:var(--escip); }
+  .id-color-baterias{ color:var(--warn); }
+  .id-color-indisponible{ color:var(--danger); font-weight:800; }
+  .id-color-cerrado{ color:var(--seguimiento); }
+  .id-status-menu{
+    position:fixed; z-index:500; background:var(--panel); border:1px solid var(--line);
+    border-radius:8px; padding:4px; box-shadow:0 8px 24px rgba(0,0,0,.35);
+    display:flex; flex-direction:column; gap:2px; min-width:175px;
+  }
+  .id-status-menu button{
+    display:flex; align-items:center; gap:8px; text-align:left; background:transparent;
+    border:none; border-radius:6px; padding:7px 9px; font-family:var(--font-mono); font-size:12px;
+    color:var(--text); white-space:nowrap; width:100%;
+  }
+  .id-status-menu button:hover{ background:var(--panel-3); }
+  .id-status-menu .dot{ width:9px; height:9px; border-radius:50%; flex-shrink:0; }
+
   .copy-cell{ display:flex; align-items:flex-start; gap:6px; }
   .copy-cell > span{ flex:1; min-width:0; }
   .copy-btn{
@@ -609,6 +631,10 @@
     background:var(--panel-3); border:1px solid var(--line); color:var(--text-dim);
     font-family:var(--font-mono); font-size:10.5px; padding:2px 7px; border-radius:5px; white-space:nowrap;
   }
+  /* cuando el chip también actúa como Id clickeable (fila masiva contraída), se conserva su
+     tamaño de chip normal y solo se añaden el puntero y un efecto de hover propio */
+  .sid-chip.id-cell{ cursor:pointer; padding:2px 7px; margin:0; display:inline-flex; }
+  .sid-chip.id-cell:hover{ border-color:var(--accent-dim); filter:brightness(1.2); background:var(--panel-3); }
   .masivo-mixed{
     font-family:var(--font-mono); font-size:10.5px; font-weight:700; color:var(--text-faint);
     background:var(--panel-3); border:1px solid var(--line); padding:3px 8px; border-radius:6px;
@@ -1134,6 +1160,20 @@ let sortColumn = null;   // 'estado' | 'fechaAlarma' | 'serviceId' | null (null 
 let sortDirection = 'asc'; // 'asc' | 'desc'
 let expandedMasivoGroups = new Set(); // ids de grupos MASIVO que el usuario expandió manualmente (contraídos por defecto)
 let escalateMenuEl = null; // referencia al menú flotante de "Escalar" actualmente abierto (si hay uno)
+let idStatusMenuEl = null; // referencia al menú flotante de "Estado eléctrico del Id" actualmente abierto (si hay uno)
+
+// Determina el color de la celda Id según el estado eléctrico del registro:
+// Cerrado = verde, Indisponible = rojo, MG Portátil = azul, En Generador = naranja, En Baterías = amarillo.
+// El estado CERRADO tiene prioridad (una vez cerrado ya no importa en qué proceso estaba).
+function getIdColorClass(r){
+  if(r.estado === 'CERRADO') return 'id-color-cerrado';
+  const proceso = (r.proceso || '').trim().toLowerCase();
+  if(proceso === 'culmina respaldo, indisponible') return 'id-color-indisponible';
+  if(proceso === 'mg portatil') return 'id-color-mg';
+  if(proceso === 'en generador' || proceso === 'en baterías y generador' || proceso === 'en baterias y generador') return 'id-color-generador';
+  if(proceso === 'en baterías' || proceso === 'en baterias') return 'id-color-baterias';
+  return '';
+}
 
 // Devuelve la clave de agrupación de un registro MASIVO (o null si no aplica), para poder
 // mostrar todos los Service ID de un mismo lote en una sola fila contraída.
@@ -1610,6 +1650,54 @@ function render(){
     document.removeEventListener('click', closeEscalateMenuOnce);
   }
 
+  // Menú flotante que se abre al hacer clic sobre el Id de un registro, para cambiar
+  // rápidamente su estado eléctrico (MG Portátil / Generador / Baterías / Indisponible / Cerrado).
+  const ID_STATUS_OPTIONS = [
+    { key:'mg',            label:'MG Portátil',   color:'var(--blue)' },
+    { key:'generador',     label:'En Generador',  color:'var(--escip)' },
+    { key:'baterias',      label:'En Baterías',   color:'var(--warn)' },
+    { key:'indisponible',  label:'Indisponible',  color:'var(--danger)' },
+    { key:'cerrado',       label:'Cerrado',       color:'var(--seguimiento)' }
+  ];
+  function showIdStatusMenu(cellEl, id){
+    closeEscalateMenu();
+    closeIdStatusMenu();
+    const rect = cellEl.getBoundingClientRect();
+    const menu = document.createElement('div');
+    menu.className = 'id-status-menu';
+    menu.style.top = `${rect.bottom + 4}px`;
+    menu.style.left = `${rect.left}px`;
+    menu.innerHTML = ID_STATUS_OPTIONS.map(o =>
+      `<button type="button" data-id-opt="${o.key}"><span class="dot" style="background:${o.color};"></span> ${o.label}</button>`
+    ).join('');
+    document.body.appendChild(menu);
+    menu.querySelectorAll('[data-id-opt]').forEach(opt=>{
+      opt.addEventListener('click', async (e)=>{
+        e.stopPropagation();
+        const rec = records.find(r=>r.id===id);
+        if(rec){
+          const opcion = opt.dataset.idOpt;
+          if(opcion === 'mg') rec.proceso = 'MG PORTATIL';
+          else if(opcion === 'generador') rec.proceso = 'En Generador';
+          else if(opcion === 'baterias') rec.proceso = 'En Baterías';
+          else if(opcion === 'indisponible') rec.proceso = 'Culmina respaldo, Indisponible';
+          else if(opcion === 'cerrado') rec.estado = 'CERRADO';
+          await saveRecords();
+          render();
+          showToast('Estado eléctrico del sitio actualizado');
+        }
+        closeIdStatusMenu();
+      });
+    });
+    idStatusMenuEl = menu;
+    setTimeout(()=> document.addEventListener('click', closeIdStatusMenuOnce), 0);
+  }
+  function closeIdStatusMenuOnce(){ closeIdStatusMenu(); }
+  function closeIdStatusMenu(){
+    if(idStatusMenuEl){ idStatusMenuEl.remove(); idStatusMenuEl = null; }
+    document.removeEventListener('click', closeIdStatusMenuOnce);
+  }
+
   function closeTkCluster(anchorRecords){
     const set = new Map();
     anchorRecords.forEach(r=>{
@@ -1641,7 +1729,7 @@ function render(){
         <td class="mono">${dash(r.fechaAlarma)}</td>
         <td class="mono">${ticketCellHtml(r.otsSev2, sharedOts2Colors, searchTerm)}</td>
         <td class="mono">${dashHl(r.tpChange, searchTerm)}</td>
-        <td class="mono" style="color:var(--text); font-weight:600;">${dashHl(r.serviceId, searchTerm)}</td>
+        <td class="mono"><span class="id-cell ${getIdColorClass(r)}" style="font-weight:600;" data-id-menu="${r.id}" title="Clic para cambiar el estado eléctrico del sitio">${dashHl(r.serviceId, searchTerm)}</span></td>
         <td class="obs-text">${dash(r.nombreSitio)}</td>
         <td>${procesoHtml}</td>
         <td class="obs-text">${compactTextHtml(r.observacion, searchTerm)}</td>
@@ -1679,7 +1767,7 @@ function render(){
     const vipCount = groupRecords.filter(x=>x.vip==='SI').length;
     const elecCount = groupRecords.filter(x=>x.reporteElectrico).length;
     const siteNames = [...new Set(groupRecords.map(x=>x.nombreSitio).filter(Boolean))];
-    const chips = groupRecords.map(x=>`<span class="sid-chip" title="${escapeHtml([x.nombreSitio, x.categoria].filter(Boolean).join(' · '))}">${escapeHtml(x.serviceId)}</span>`).join('');
+    const chips = groupRecords.map(x=>`<span class="sid-chip id-cell ${getIdColorClass(x)}" data-id-menu="${x.id}" title="${escapeHtml([x.nombreSitio, x.categoria].filter(Boolean).join(' · '))} — Clic para cambiar el estado eléctrico">${escapeHtml(x.serviceId)}</span>`).join('');
     const allTeams = groupRecords.map(x=>x.teams).filter(Boolean).join('\n\n');
     const tkSharing = closeTkCluster(groupRecords);
     const tkPending = tkSharing.filter(x=>x.estado!=='CERRADO');
@@ -1820,6 +1908,12 @@ function render(){
     btn.addEventListener('click', (e)=>{
       e.stopPropagation();
       showEscalateMenu(btn, btn.dataset.escalate);
+    });
+  });
+  tbody.querySelectorAll('[data-id-menu]').forEach(cell=>{
+    cell.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      showIdStatusMenu(cell, cell.dataset.idMenu);
     });
   });
   tbody.querySelectorAll('[data-toggle-group]').forEach(btn=>{
@@ -2721,8 +2815,9 @@ function openModal(id, readOnly){
           <label>Teams</label>
           <div class="teams-row">
             <textarea id="f_teams">${escapeHtml(r.teams)}</textarea>
-            <button type="button" class="gen-btn" id="f_gen" style="${readOnly ? 'display:none;' : ''}">Generar</button>
+            <button type="button" class="gen-btn" id="f_gen" style="${readOnly ? 'display:none;' : ''}" title="El resumen se genera solo al llenar los campos; usa este botón para forzar la regeneración si ya lo editaste a mano">Regenerar</button>
           </div>
+          ${readOnly ? '' : `<span class="hint" style="font-size:11px;">Este resumen se arma solo con OTS Sev 3/4, Service ID, Nombre, Proceso y Observación. Si lo editas a mano aquí, tus cambios no se sobrescriben.</span>`}
         </div>
         ${readOnly ? '' : `
         <div class="full electrico-box">
@@ -2902,14 +2997,15 @@ function openModal(id, readOnly){
     cat.btn.classList.toggle('active-tipo', active);
     cat.box.style.display = active ? '' : 'none';
     updateSaveButtonLabel();
+    regenerateTeams(false);
   }
   MASIVO_CATS.forEach(cat=>{
     cat.btn.onclick = ()=> setCatActive(cat, !masivoActive[cat.key]);
     cat.input.addEventListener('input', ()=>{ renderCatPreview(cat); updateSaveButtonLabel(); });
     if(masivoActive[cat.key]){ cat.btn.classList.add('active-tipo'); cat.box.style.display = ''; renderCatPreview(cat); }
   });
-  tipoUnicoBtn.onclick = ()=>{ tipoProceso='UNICO'; refreshTipoProcesoUI(); };
-  tipoMasivoBtn.onclick = ()=>{ tipoProceso='MASIVO'; refreshTipoProcesoUI(); };
+  tipoUnicoBtn.onclick = ()=>{ tipoProceso='UNICO'; refreshTipoProcesoUI(); regenerateTeams(false); };
+  tipoMasivoBtn.onclick = ()=>{ tipoProceso='MASIVO'; refreshTipoProcesoUI(); regenerateTeams(false); };
 
   const serviceIdInput = document.getElementById('f_serviceId');
   const nombreInput = document.getElementById('f_nombre');
@@ -2995,7 +3091,8 @@ function openModal(id, readOnly){
     refreshSeguimientoCountBadge();
   });
 
-  document.getElementById('f_gen').onclick = ()=>{
+  // ---- Generación automática del resumen "Teams" a partir de los demás campos ----
+  function computeTeamsText(){
     const otsSev1 = document.getElementById('f_otsSev1').value.trim();
     const otsSev2 = document.getElementById('f_otsSev2').value.trim();
     const proceso = document.getElementById('f_proceso').value.trim();
@@ -3011,16 +3108,46 @@ function openModal(id, readOnly){
           lines.push(generateTeamsText({ otsSev1, serviceId:id, otsSev2, nombreSitio, categoria: cat.label, proceso, observacion }));
         });
       });
-      document.getElementById('f_teams').value = lines.join('\n');
-      return;
+      return lines.join('\n');
     }
     const draft = {
       otsSev1, serviceId: document.getElementById('f_serviceId').value, otsSev2,
       nombreSitio: document.getElementById('f_nombre').value,
       categoria: '', proceso, observacion,
     };
-    document.getElementById('f_teams').value = generateTeamsText(draft);
-  };
+    return generateTeamsText(draft);
+  }
+
+  const teamsField = document.getElementById('f_teams');
+  // Guarda el último texto generado automáticamente, para saber si el agente
+  // ya personalizó manualmente el campo Teams y así no pisarle su texto.
+  let lastAutoTeams = teamsField.value;
+
+  function regenerateTeams(force){
+    const generated = computeTeamsText();
+    if(!force && teamsField.value !== lastAutoTeams) return; // el agente editó el texto a mano, se respeta
+    teamsField.value = generated;
+    lastAutoTeams = generated;
+  }
+
+  // Botón "Generar": fuerza la regeneración aunque el campo se haya editado a mano.
+  document.getElementById('f_gen').onclick = ()=> regenerateTeams(true);
+
+  // Cualquier campo que alimenta el resumen dispara la regeneración automática
+  // (mientras el agente no haya escrito algo distinto a mano en el campo Teams).
+  const TEAMS_SOURCE_FIELD_IDS = ['f_otsSev1','f_otsSev2','f_serviceId','f_nombre','f_proceso','f_observacion'];
+  TEAMS_SOURCE_FIELD_IDS.forEach(id=>{
+    const el = document.getElementById(id);
+    el.addEventListener('input', ()=> regenerateTeams(false));
+    el.addEventListener('change', ()=> regenerateTeams(false));
+  });
+  MASIVO_CATS.forEach(cat=>{
+    cat.input.addEventListener('input', ()=> regenerateTeams(false));
+    cat.input.addEventListener('change', ()=> regenerateTeams(false));
+  });
+  // Nota: no se regenera al abrir el modal, para no pisar un texto de Teams ya
+  // guardado (o llenar de separadores vacíos un registro nuevo) antes de que el
+  // agente realmente llene o actualice algún campo.
 
   function caseFormHasContent(){
     const changed = CASE_FORM_FIELD_IDS.some(id => document.getElementById(id).value !== initialSnapshot[id]);
