@@ -779,9 +779,17 @@
     <div class="kpi-card kpi-total">
       <div class="kpi-icon">📋</div>
       <div class="kpi-body">
-        <div class="kpi-label">Casos activos</div>
-        <div class="kpi-value" id="kpiActivosValue">0</div>
-        <div class="kpi-sub" id="kpiActivosSub">—</div>
+        <div class="kpi-label">Casos activos Ericsson (por OTS: RAN/INFRA)</div>
+        <div class="kpi-value" id="kpiActivosEricssonValue">0</div>
+        <div class="kpi-sub" id="kpiActivosEricssonSub">—</div>
+      </div>
+    </div>
+    <div class="kpi-card kpi-total">
+      <div class="kpi-icon">📋</div>
+      <div class="kpi-body">
+        <div class="kpi-label">Casos activos Huawei (por OTS: RAN/INFRA)</div>
+        <div class="kpi-value" id="kpiActivosHuaweiValue">0</div>
+        <div class="kpi-sub" id="kpiActivosHuaweiSub">—</div>
       </div>
     </div>
     <div class="kpi-card kpi-critical">
@@ -830,14 +838,6 @@
         <div class="kpi-label">Pendiente por cierre</div>
         <div class="kpi-value" id="kpiPendienteValue">0</div>
         <div class="kpi-sub" id="kpiPendienteSub">—</div>
-      </div>
-    </div>
-    <div class="kpi-card kpi-electrico">
-      <div class="kpi-icon">⚡</div>
-      <div class="kpi-body">
-        <div class="kpi-label">Reportes eléctricos activos</div>
-        <div class="kpi-value" id="kpiElectricoValue">0</div>
-        <div class="kpi-sub" id="kpiElectricoSub">—</div>
       </div>
     </div>
   </div>
@@ -1481,8 +1481,32 @@ function compactTextHtml(v, term, threshold){
 
 function updateKpis(){
   const activeRecords = records.filter(r => r.estado !== 'CERRADO');
-  const activosEricsson = activeRecords.filter(r => (r.gestor||'ERICSSON') === 'ERICSSON').length;
-  const activosHuawei = activeRecords.filter(r => r.gestor === 'HUAWEI').length;
+
+  // "Casos activos" ahora cuenta por OTS único, no por cantidad de IDs/registros, y se
+  // desglosa por gestor (Ericsson / Huawei):
+  // RAN  = valores únicos de OTS Sev 3 (otsSev1) entre los casos activos de ese gestor.
+  // INFRA = valores únicos de OTS Sev 4 (otsSev2) entre los casos activos de ese gestor.
+  // Un mismo OTS compartido por varios sitios cuenta una sola vez.
+  const ranOtsEricssonSet = new Set();
+  const infraOtsEricssonSet = new Set();
+  const ranOtsHuaweiSet = new Set();
+  const infraOtsHuaweiSet = new Set();
+  activeRecords.forEach(r=>{
+    const ots1 = (r.otsSev1||'').trim();
+    const ots2 = (r.otsSev2||'').trim();
+    const esHuawei = r.gestor === 'HUAWEI';
+    if(esHuawei){
+      if(ots1) ranOtsHuaweiSet.add(ots1);
+      if(ots2) infraOtsHuaweiSet.add(ots2);
+    } else {
+      if(ots1) ranOtsEricssonSet.add(ots1);
+      if(ots2) infraOtsEricssonSet.add(ots2);
+    }
+  });
+  const activosRanEricsson = ranOtsEricssonSet.size;
+  const activosInfraEricsson = infraOtsEricssonSet.size;
+  const activosRanHuawei = ranOtsHuaweiSet.size;
+  const activosInfraHuawei = infraOtsHuaweiSet.size;
 
   // "Críticos" ahora suma únicamente los casos activos: EN GESTIÓN + ESCALADO A IP + ESCALADO A DWDM.
   // Los CERRADO (y cualquier otro estado como INGRESO, TP CHANGE, SEGUIMIENTO, PENDIENTE) quedan fuera.
@@ -1505,11 +1529,11 @@ function updateKpis(){
   const pendienteEricsson = records.filter(r => r.estado === 'PENDIENTE POR CIERRE' && (r.gestor||'ERICSSON') === 'ERICSSON').length;
   const pendienteHuawei = records.filter(r => r.estado === 'PENDIENTE POR CIERRE' && r.gestor === 'HUAWEI').length;
 
-  const electricoActivos = records.filter(r => r.reporteElectrico && r.estado !== 'CERRADO');
-  const electricoAvisos = electricoActivos.filter(r => r.seguimientoSolicitado && !r.seguimientoSolicitadoAtendido).length;
+  document.getElementById('kpiActivosEricssonValue').textContent = activosRanEricsson + activosInfraEricsson;
+  document.getElementById('kpiActivosEricssonSub').textContent = `RAN ${activosRanEricsson} · INFRA ${activosInfraEricsson}`;
 
-  document.getElementById('kpiActivosValue').textContent = activosEricsson + activosHuawei;
-  document.getElementById('kpiActivosSub').textContent = `Ericsson ${activosEricsson} · Huawei ${activosHuawei}`;
+  document.getElementById('kpiActivosHuaweiValue').textContent = activosRanHuawei + activosInfraHuawei;
+  document.getElementById('kpiActivosHuaweiSub').textContent = `RAN ${activosRanHuawei} · INFRA ${activosInfraHuawei}`;
 
   document.getElementById('kpiCriticosValue').textContent = criticosEricsson + criticosHuawei;
   document.getElementById('kpiCriticosSub').textContent = `Ericsson ${criticosEricsson} · Huawei ${criticosHuawei}`;
@@ -1528,11 +1552,6 @@ function updateKpis(){
 
   document.getElementById('kpiPendienteValue').textContent = pendienteEricsson + pendienteHuawei;
   document.getElementById('kpiPendienteSub').textContent = `Ericsson ${pendienteEricsson} · Huawei ${pendienteHuawei}`;
-
-  document.getElementById('kpiElectricoValue').textContent = electricoActivos.length;
-  document.getElementById('kpiElectricoSub').textContent = electricoAvisos > 0
-    ? `🔔 ${electricoAvisos} aviso${electricoAvisos===1?'':'s'} pendiente${electricoAvisos===1?'':'s'}`
-    : 'sin avisos pendientes';
 }
 
 function updateSortIndicators(){
@@ -1612,6 +1631,7 @@ function render(){
 
   const sharedOts1Colors = computeSharedTicketColors(list, 'otsSev1');
   const sharedOts2Colors = computeSharedTicketColors(list, 'otsSev2');
+  const sharedTpChangeColors = computeSharedTicketColors(list, 'tpChange');
   // clústeres por TK compartido, calculados sobre TODA la base (no solo lo filtrado en pantalla),
   // para poder cerrar de un solo clic todos los registros que comparten un mismo número de TK.
   const tkClusters = computeTkClusters(records);
@@ -1728,7 +1748,7 @@ function render(){
         <td class="mono">${ticketCellHtml(r.otsSev1, sharedOts1Colors, searchTerm)}</td>
         <td class="mono">${dash(r.fechaAlarma)}</td>
         <td class="mono">${ticketCellHtml(r.otsSev2, sharedOts2Colors, searchTerm)}</td>
-        <td class="mono">${dashHl(r.tpChange, searchTerm)}</td>
+        <td class="mono">${ticketCellHtml(r.tpChange, sharedTpChangeColors, searchTerm)}</td>
         <td class="mono"><span class="id-cell ${getIdColorClass(r)}" style="font-weight:600;" data-id-menu="${r.id}" title="Clic para cambiar el estado eléctrico del sitio">${dashHl(r.serviceId, searchTerm)}</span></td>
         <td class="obs-text">${dash(r.nombreSitio)}</td>
         <td>${procesoHtml}</td>
@@ -1792,7 +1812,7 @@ function render(){
           ${ticketCellHtml(first.otsSev2, sharedOts2Colors, searchTerm)}
           <div><button type="button" class="masivo-toggle-btn" data-toggle-group="${groupKey}" title="Ver/editar registros individuales">Expandir</button></div>
         </td>
-        <td class="mono">${dashHl(first.tpChange, searchTerm)}</td>
+        <td class="mono">${ticketCellHtml(first.tpChange, sharedTpChangeColors, searchTerm)}</td>
         <td class="mono">
           <div class="sid-chip-wrap">${chips}</div>
         </td>
@@ -2779,6 +2799,14 @@ function openModal(id, readOnly){
               <div id="siteHintCaida"></div>
             </div>
           </div>
+          <div class="masivo-cat-box" data-cat="CHANGE">
+            <button type="button" class="masivo-btn" id="f_masivo_change">🔧 Change</button>
+            <div class="masivo-ids" id="masivoIdsChange" style="display:none;">
+              <label>Service ID — Change</label>
+              <input type="text" id="f_serviceId_change" list="siteIdList" placeholder="PA213 (o pega varios: BT200, AU101, AU501)" />
+              <div id="siteHintChange"></div>
+            </div>
+          </div>
         </div>
         <div>
           <label>OTS Sev 3</label>
@@ -2861,7 +2889,7 @@ function openModal(id, readOnly){
     if(r.tipoProceso === 'MASIVO' && r.categoria){
       document.getElementById('f_tipo_masivo').classList.add('active-tipo');
       document.getElementById('f_tipo_unico').classList.remove('active-tipo');
-      const catLabelMap = { 'EN BATERIAS':'🔋 En Baterías', 'EN GENERADOR':'⚙️ En Generador', 'CAIDA DIRECTA':'⚡ Caída Directa' };
+      const catLabelMap = { 'EN BATERIAS':'🔋 En Baterías', 'EN GENERADOR':'⚙️ En Generador', 'CAIDA DIRECTA':'⚡ Caída Directa', 'CHANGE':'🔧 Change' };
       const catLabel = catLabelMap[r.categoria] || r.categoria;
       document.getElementById('unicoBox').insertAdjacentHTML('beforeend', `<div class="site-name-hint" style="margin-top:8px;">Tipo de masivo: ${escapeHtml(catLabel)}</div>`);
     }
@@ -2907,7 +2935,8 @@ function openModal(id, readOnly){
   const MASIVO_CATS = [
     { key:'BATERIAS', label:'EN BATERIAS', btnId:'f_masivo_baterias', boxId:'masivoIdsBaterias', inputId:'f_serviceId_baterias', hintId:'siteHintBaterias' },
     { key:'GENERADOR', label:'EN GENERADOR', btnId:'f_masivo_generador', boxId:'masivoIdsGenerador', inputId:'f_serviceId_generador', hintId:'siteHintGenerador' },
-    { key:'CAIDA', label:'CAIDA DIRECTA', btnId:'f_masivo_caida', boxId:'masivoIdsCaida', inputId:'f_serviceId_caida', hintId:'siteHintCaida' }
+    { key:'CAIDA', label:'CAIDA DIRECTA', btnId:'f_masivo_caida', boxId:'masivoIdsCaida', inputId:'f_serviceId_caida', hintId:'siteHintCaida' },
+    { key:'CHANGE', label:'CHANGE', btnId:'f_masivo_change', boxId:'masivoIdsChange', inputId:'f_serviceId_change', hintId:'siteHintChange' }
   ];
   MASIVO_CATS.forEach(c=>{
     c.btn = document.getElementById(c.btnId);
