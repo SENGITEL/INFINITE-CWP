@@ -90,7 +90,7 @@ function getUsers(): Record<string, string> {
   // Fallback: single legacy user or built-in defaults.
   return {
     [process.env.NOC_USERNAME || "admin"]: process.env.NOC_PASSWORD || "noc2024",
-    supervisor: "noc2024",
+    supervisor: "infinite2026",
     operador: "noc2024",
   }
 }
