@@ -148,6 +148,8 @@
     background:var(--panel-2); border:1px solid var(--line-soft); border-radius:20px; padding:7px 13px;
   }
   .status-strip .dot{width:6px;height:6px;border-radius:50%;background:var(--accent); box-shadow:0 0 6px 0 var(--accent-glow);}
+  .status-strip .dot.saving{background:var(--warn); box-shadow:0 0 6px 0 rgba(255,201,61,0.45);}
+  .status-strip .dot.error{background:var(--danger); box-shadow:0 0 6px 0 var(--danger-glow);}
   .status-strip .sep{color:var(--line);}
   .status-strip .updated{color:var(--text-dim);}
 
@@ -1288,8 +1290,13 @@ async function copyTextToClipboard(text){
   return false;
 }
 
-function setSync(text){
+function setSync(text, state){
   document.getElementById('syncText').textContent = text;
+  const dot = document.querySelector('#syncStatus .dot');
+  if(dot){
+    dot.classList.remove('saving','error');
+    if(state) dot.classList.add(state);
+  }
 }
 
 
@@ -1367,21 +1374,33 @@ async function loadAll(showLoadingText){
 }
 
 async function saveRecords(){
+  // el indicador de arriba ahora también refleja TU guardado (no solo el sondeo en
+  // segundo plano): "guardando…" mientras se escribe, "guardado" cuando termina.
+  setSync('guardando…', 'saving');
   try{
     const raw = JSON.stringify(records);
     await window.storage.set(STORAGE_KEY, raw, true);
     lastRecordsRaw = raw;
+    lastSyncAt = new Date();
+    setSync('guardado');
+    refreshLastUpdatedLabel();
   }catch(e){
+    setSync('error al guardar', 'error');
     showToast('Error guardando. Intenta de nuevo.', 'error');
   }
 }
 
 async function saveSites(){
+  setSync('guardando…', 'saving');
   try{
     const raw = JSON.stringify(sites);
     await window.storage.set(STORAGE_KEY_SITES, raw, true);
     lastSitesRaw = raw;
+    lastSyncAt = new Date();
+    setSync('guardado');
+    refreshLastUpdatedLabel();
   }catch(e){
+    setSync('error al guardar', 'error');
     showToast('Error guardando la base de sitios.', 'error');
   }
 }
