@@ -770,7 +770,6 @@
       <button class="btn-ghost" id="themeToggleBtn" title="Cambiar entre modo oscuro y claro">🌙 Oscuro</button>
       <button class="btn-ghost" id="exportBtn">⬇ Exportar Excel</button>
       <button class="btn-ghost" id="shiftSummaryBtn">📋 Resumen de turno</button>
-      <button class="btn-ghost" id="refreshBtn">↻ Actualizar</button>
       <button class="btn-primary" id="newBtn">+ Nuevo registro</button>
     </div>
   </div>
@@ -1323,6 +1322,9 @@ function showTableSkeleton(){
   if(emptyEl) emptyEl.style.display = 'none';
 }
 
+let lastRecordsRaw = null;
+let lastSitesRaw = null;
+
 async function loadAll(showLoadingText){
   if(showLoadingText){
     setSync('sincronizando…');
@@ -1333,21 +1335,33 @@ async function loadAll(showLoadingText){
       window.storage.get(STORAGE_KEY, true).catch(()=>null),
       window.storage.get(STORAGE_KEY_SITES, true).catch(()=>null)
     ]);
-    records = resCases && resCases.value ? JSON.parse(resCases.value) : [];
-    sites = resSites && resSites.value ? JSON.parse(resSites.value) : [];
+    const rawRecords = resCases && resCases.value ? resCases.value : '[]';
+    const rawSites = resSites && resSites.value ? resSites.value : '[]';
     lastSyncAt = new Date();
+
+    // solo si algo cambió realmente se vuelve a construir la tabla; así el sondeo
+    // en segundo plano nunca produce un parpadeo/refresco visible cuando no hay novedades
+    const recordsChanged = rawRecords !== lastRecordsRaw;
+    const sitesChanged = rawSites !== lastSitesRaw;
+    if(recordsChanged){ records = JSON.parse(rawRecords); lastRecordsRaw = rawRecords; }
+    if(sitesChanged){ sites = JSON.parse(rawSites); lastSitesRaw = rawSites; }
+
+    setSync('sincronizado');
+    refreshLastUpdatedLabel();
+    if(sitesChanged) buildSiteDatalist();
+    if(recordsChanged || sitesChanged || showLoadingText) render();
   }catch(e){
     // keep whatever we had locally
+    setSync('sincronizado');
+    refreshLastUpdatedLabel();
   }
-  setSync('sincronizado');
-  refreshLastUpdatedLabel();
-  buildSiteDatalist();
-  render();
 }
 
 async function saveRecords(){
   try{
-    await window.storage.set(STORAGE_KEY, JSON.stringify(records), true);
+    const raw = JSON.stringify(records);
+    await window.storage.set(STORAGE_KEY, raw, true);
+    lastRecordsRaw = raw;
   }catch(e){
     showToast('Error guardando. Intenta de nuevo.', 'error');
   }
@@ -1355,7 +1369,9 @@ async function saveRecords(){
 
 async function saveSites(){
   try{
-    await window.storage.set(STORAGE_KEY_SITES, JSON.stringify(sites), true);
+    const raw = JSON.stringify(sites);
+    await window.storage.set(STORAGE_KEY_SITES, raw, true);
+    lastSitesRaw = raw;
   }catch(e){
     showToast('Error guardando la base de sitios.', 'error');
   }
@@ -3682,7 +3698,6 @@ function openImportSitesModal(){
 }
 
 document.getElementById('newBtn').addEventListener('click', ()=> openModal(null));
-document.getElementById('refreshBtn').addEventListener('click', ()=> loadAll(true));
 document.getElementById('exportBtn').addEventListener('click', exportToCSV);
 document.getElementById('shiftSummaryBtn').addEventListener('click', openShiftSummaryModal);
 document.getElementById('electricoExportBtn').addEventListener('click', exportElectricoToCSV);
