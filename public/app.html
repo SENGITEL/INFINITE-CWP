@@ -1168,6 +1168,7 @@ function getIdColorClass(r){
   if(r.estado === 'CERRADO') return 'id-color-cerrado';
   const proceso = (r.proceso || '').trim().toLowerCase();
   if(proceso === 'culmina respaldo, indisponible') return 'id-color-indisponible';
+  if(proceso === 'caída directa sin alarmas previas de energía' || proceso === 'caida directa sin alarmas previas de energia') return 'id-color-indisponible';
   if(proceso === 'mg portatil') return 'id-color-mg';
   if(proceso === 'en generador' || proceso === 'en baterías y generador' || proceso === 'en baterias y generador') return 'id-color-generador';
   if(proceso === 'en baterías' || proceso === 'en baterias') return 'id-color-baterias';
@@ -1713,11 +1714,17 @@ function render(){
         const rec = records.find(r=>r.id===id);
         if(rec){
           const opcion = opt.dataset.idOpt;
+          // si el texto de Teams actual coincide con lo que generaría el proceso anterior,
+          // significa que nadie lo personalizó a mano, así que se regenera con el proceso nuevo
+          const previousAutoTeams = generateTeamsText(rec);
           if(opcion === 'mg') rec.proceso = 'MG PORTATIL';
           else if(opcion === 'generador') rec.proceso = 'En Generador';
           else if(opcion === 'baterias') rec.proceso = 'En Baterías';
           else if(opcion === 'indisponible') rec.proceso = 'Culmina respaldo, Indisponible';
           else if(opcion === 'cerrado') rec.estado = 'CERRADO';
+          if(opcion !== 'cerrado' && (!rec.teams || rec.teams === previousAutoTeams)){
+            rec.teams = generateTeamsText(rec);
+          }
           render();
           await saveRecords();
           showToast('Estado eléctrico del sitio actualizado');
