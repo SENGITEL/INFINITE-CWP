@@ -92,6 +92,14 @@
   body.theme-light #electricoModeActivos.active,
   body.theme-light #electricoModeCerrados.active{ color:#ffffff; }
 
+  /* cross-fade corto y suave para las actualizaciones de tabla (evita el parpadeo/salto
+     al sincronizar); en navegadores sin soporte de View Transitions esto simplemente no aplica */
+  ::view-transition-old(root),
+  ::view-transition-new(root){ animation-duration: 140ms; }
+  @media (prefers-reduced-motion: reduce){
+    ::view-transition-old(root), ::view-transition-new(root){ animation: none; }
+  }
+
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;background:transparent;color:var(--text);font-family:var(--font-ui);}
   body{min-height:100vh; -webkit-font-smoothing:antialiased;}
@@ -1587,7 +1595,55 @@ function updateSortIndicators(){
 
 /* ---------------- RENDER CASES ---------------- */
 
+// ---------------------------------------------------------------------------
+// Envoltorio anti-parpadeo: la función real de dibujado (todo el trabajo que
+// ya existía) se movió a renderInner(). Esta render() de aquí es la que
+// llaman el resto del código y los pollings de sincronización; se encarga de:
+//   1) Guardar la posición de scroll de las tres tablas (y de la ventana)
+//      antes de tocar el DOM, para restaurarla justo después. Sin esto, cada
+//      vez que otro gestor guarda un cambio y el polling reconstruye la
+//      tabla, el navegador podía "saltar" el scroll y perder de vista la fila
+//      en la que se estaba trabajando.
+//   2) Usar la View Transition API del navegador (si está disponible) para
+//      que el reemplazo de las filas sea un cross-fade suave en vez de un
+//      parpadeo brusco de "borra todo y vuelve a pintar". En navegadores que
+//      no la soportan, simplemente se dibuja igual que antes (sin romper
+//      nada).
+function captureScrollState(){
+  const grab = id => {
+    const tb = document.getElementById(id);
+    const box = tb && tb.closest('.table-scroll');
+    return box ? { box, top: box.scrollTop, left: box.scrollLeft } : null;
+  };
+  return {
+    winX: window.scrollX,
+    winY: window.scrollY,
+    boxes: ['tbody','electricoTbody','sitesTbody'].map(grab).filter(Boolean)
+  };
+}
+function restoreScrollState(state){
+  if(!state) return;
+  state.boxes.forEach(b=>{ b.box.scrollTop = b.top; b.box.scrollLeft = b.left; });
+  window.scrollTo(state.winX, state.winY);
+}
+const prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
 function render(){
+  const scrollState = captureScrollState();
+  // si había un menú flotante (escalar / estado eléctrico) abierto, se cierra antes de
+  // repintar: su posición se calculó sobre un botón que puede dejar de existir al
+  // reconstruir la tabla, y quedaría "flotando" desconectado de cualquier fila.
+  if(escalateMenuEl){ escalateMenuEl.remove(); escalateMenuEl = null; }
+  if(idStatusMenuEl){ idStatusMenuEl.remove(); idStatusMenuEl = null; }
+  const paint = ()=>{ renderInner(); restoreScrollState(scrollState); };
+  if(typeof document.startViewTransition === 'function' && !prefersReducedMotion){
+    document.startViewTransition(paint);
+  } else {
+    paint();
+  }
+}
+
+function renderInner(){
   updateKpis();
   const ericssonCount = records.filter(r => (r.gestor||'ERICSSON') === 'ERICSSON').length;
   const huaweiCount = records.filter(r => r.gestor === 'HUAWEI').length;
