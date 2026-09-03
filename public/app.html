@@ -1654,8 +1654,8 @@ function render(){
         const rec = records.find(r=>r.id===id);
         if(rec){
           rec.estado = opt.dataset.escOpt;
-          await saveRecords();
           render();
+          await saveRecords();
           showToast(opt.dataset.escOpt === 'ESCALADO A IP' ? 'Registro escalado a IP' : 'Registro escalado a DWDM');
         }
         closeEscalateMenu();
@@ -1702,8 +1702,8 @@ function render(){
           else if(opcion === 'baterias') rec.proceso = 'En Baterías';
           else if(opcion === 'indisponible') rec.proceso = 'Culmina respaldo, Indisponible';
           else if(opcion === 'cerrado') rec.estado = 'CERRADO';
-          await saveRecords();
           render();
+          await saveRecords();
           showToast('Estado eléctrico del sitio actualizado');
         }
         closeIdStatusMenu();
@@ -1894,8 +1894,8 @@ function render(){
       const id = btn.dataset.del;
       if(!confirm('¿Eliminar este registro? Esta acción no se puede deshacer.')) return;
       records = records.filter(r=>r.id !== id);
-      await saveRecords();
       render();
+      await saveRecords();
       showToast('Registro eliminado');
     });
   });
@@ -1907,8 +1907,8 @@ function render(){
       if(!rec) return;
       if(!confirm('¿Cerrar este registro?')) return;
       rec.estado = 'CERRADO';
-      await saveRecords();
       render();
+      await saveRecords();
       showToast('Registro cerrado');
     });
   });
@@ -1919,8 +1919,8 @@ function render(){
       const rec = records.find(r=>r.id===id);
       if(!rec) return;
       rec.estado = 'PENDIENTE POR CIERRE';
-      await saveRecords();
       render();
+      await saveRecords();
       showToast('Registro marcado como pendiente de cierre');
     });
   });
@@ -1954,8 +1954,8 @@ function render(){
       if(!confirm(`¿Eliminar los ${ids.length} registros de este grupo masivo? Esta acción no se puede deshacer.`)) return;
       records = records.filter(r => !ids.includes(r.id));
       expandedMasivoGroups.delete(gkey);
-      await saveRecords();
       render();
+      await saveRecords();
       showToast('Grupo masivo eliminado');
     });
   });
@@ -1970,8 +1970,8 @@ function render(){
       if(pendientes.length === 0) return;
       if(!confirm(`¿Cerrar los ${pendientes.length} registro(s) que comparten este mismo TK?`)) return;
       pendientes.forEach(r => { r.estado = 'CERRADO'; });
-      await saveRecords();
       render();
+      await saveRecords();
       showToast(`${pendientes.length} registro(s) cerrado(s) por TK compartido`);
     });
   });
@@ -1991,8 +1991,8 @@ function render(){
       if(pendientes.length === 0) return;
       if(!confirm(`¿Cerrar los ${pendientes.length} registro(s) que comparten el mismo TK que este lote masivo?`)) return;
       pendientes.forEach(r => { r.estado = 'CERRADO'; });
-      await saveRecords();
       render();
+      await saveRecords();
       showToast(`${pendientes.length} registro(s) cerrado(s) por TK compartido`);
     });
   });
@@ -2004,8 +2004,8 @@ function render(){
       const pendientes = groupRecords.filter(r=>r.estado!=='CERRADO' && r.estado!=='PENDIENTE POR CIERRE');
       if(pendientes.length === 0) return;
       pendientes.forEach(r => { r.estado = 'PENDIENTE POR CIERRE'; });
-      await saveRecords();
       render();
+      await saveRecords();
       showToast(`${pendientes.length} registro(s) marcado(s) como pendiente de cierre`);
     });
   });
@@ -2024,6 +2024,7 @@ async function touchSeguimiento(id, patchFn){
   if(!rec) return;
   patchFn(rec);
   rec.reporteElectricoSeguimientoAt = Date.now();
+  render(); // refleja el cambio de inmediato, sin esperar a que termine el guardado
   await saveRecords();
 }
 
@@ -2186,8 +2187,8 @@ function renderElectrico(){
       const rec = records.find(x=>x.id === id);
       if(rec){
         rec.seguimientoSolicitadoAtendido = cb.checked;
-        await saveRecords();
         render();
+        await saveRecords();
         showToast(cb.checked ? 'Aviso de seguimiento atendido' : 'Aviso marcado como pendiente nuevamente');
       }
     });
@@ -2249,8 +2250,8 @@ function renderElectrico(){
       if(rec){
         rec.reporteElectrico = false;
         rec.reporteElectricoEnviado = false;
-        await saveRecords();
         render();
+        await saveRecords();
         showToast('Quitado de reportes eléctricos');
       }
     });
@@ -2307,9 +2308,9 @@ function renderSites(){
       requireAdminPin('eliminar un sitio de la base', async ()=>{
         if(!confirm('¿Eliminar este sitio de la base?')) return;
         sites = sites.filter(s=>s.id !== id);
-        await saveSites();
         buildSiteDatalist();
         render();
+        await saveSites();
         showToast('Sitio eliminado');
       });
     });
@@ -3201,9 +3202,9 @@ function openModal(id, readOnly){
     document.getElementById('modalDelete').onclick = async ()=>{
       if(!confirm('¿Eliminar este registro?')) return;
       records = records.filter(x=>x.id !== editingId);
-      await saveRecords();
       closeModal();
       render();
+      await saveRecords();
       showToast('Registro eliminado');
     };
   }
@@ -3288,9 +3289,9 @@ function openModal(id, readOnly){
         });
       });
 
-      await saveRecords();
       closeModal();
       switchTab(gestor === 'HUAWEI' ? 'HUAWEI' : 'ERICSSON');
+      await saveRecords();
       showToast(`${totalCreated} registro${totalCreated===1?'':'s'} creado${totalCreated===1?'':'s'}`);
       return;
     }
@@ -3354,9 +3355,9 @@ function openModal(id, readOnly){
     const idx = records.findIndex(x=>x.id === updated.id);
     if(idx >= 0) records[idx] = updated; else records.push(updated);
 
-    await saveRecords();
     closeModal();
     switchTab(openedFromTab === 'ELECTRICO' ? 'ELECTRICO' : (gestor === 'HUAWEI' ? 'HUAWEI' : 'ERICSSON'));
+    await saveRecords();
     showToast(editingId ? 'Cambios guardados' : 'Registro creado');
   };
 }
@@ -3423,10 +3424,10 @@ function openSiteModal(id){
     document.getElementById('siteModalDelete').onclick = async ()=>{
       if(!confirm('¿Eliminar este sitio?')) return;
       sites = sites.filter(x=>x.id !== editingSiteId);
-      await saveSites();
       buildSiteDatalist();
       closeModal();
       render();
+      await saveSites();
       showToast('Sitio eliminado');
     };
   }
@@ -3452,10 +3453,10 @@ function openSiteModal(id){
       if(idx >= 0) sites[idx] = updated; else sites.push(updated);
     }
 
-    await saveSites();
     buildSiteDatalist();
     closeModal();
     render();
+    await saveSites();
     showToast(editingSiteId ? 'Sitio actualizado' : 'Sitio agregado');
   };
 }
@@ -3588,9 +3589,9 @@ async function commitSiteRecords(recs){
     }
   });
 
-  await saveSites();
   buildSiteDatalist();
   render();
+  await saveSites();
   return { added, updated, skipped };
 }
 
@@ -3728,7 +3729,16 @@ document.getElementById('electricoModeCerrados').addEventListener('click', ()=>{
 // poll for changes from other users/agents working simultaneously
 setInterval(()=>{
   if(!isModalOpen && !isInlineEditing) loadAll(false);
-}, 25000);
+}, 6000);
+
+// al volver a esta pestaña/ventana, sincroniza de inmediato en vez de esperar
+// al siguiente ciclo de sondeo (por si el navegador pausó el setInterval en segundo plano)
+document.addEventListener('visibilitychange', ()=>{
+  if(document.visibilityState === 'visible' && !isModalOpen && !isInlineEditing) loadAll(false);
+});
+window.addEventListener('focus', ()=>{
+  if(!isModalOpen && !isInlineEditing) loadAll(false);
+});
 
 // tick the "actualizado hace Xs" label every second
 setInterval(refreshLastUpdatedLabel, 1000);
