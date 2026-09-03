@@ -3289,6 +3289,14 @@ function openModal(id, readOnly){
   }
 
   document.getElementById('modalSave').onclick = async ()=>{
+    const saveBtnEl = document.getElementById('modalSave');
+    function setSaving(){
+      // feedback inmediato: aunque el guardado tarde por la verificación de cambios
+      // recientes de otros gestores, el botón muestra de una vez que quedó registrado el clic
+      saveBtnEl.disabled = true;
+      saveBtnEl.dataset.originalText = saveBtnEl.textContent;
+      saveBtnEl.textContent = 'Guardando…';
+    }
     // ----- MODO MASIVO: una o varias categorías, cada una con sus propios Service ID (solo al crear) -----
     if(tipoProceso === 'MASIVO' && !editingId){
       const groups = MASIVO_CATS
@@ -3332,6 +3340,7 @@ function openModal(id, readOnly){
       }
 
       try{
+        setSaving();
         const res = await window.storage.get(STORAGE_KEY, true);
         records = res && res.value ? JSON.parse(res.value) : [];
       }catch(e){}
@@ -3427,6 +3436,7 @@ function openModal(id, readOnly){
     };
     // reload latest before merging to reduce clobbering concurrent edits
     try{
+      setSaving();
       const res = await window.storage.get(STORAGE_KEY, true);
       records = res && res.value ? JSON.parse(res.value) : [];
     }catch(e){}
@@ -3516,13 +3526,21 @@ function openSiteModal(id){
     SITE_COLUMNS.forEach(c => { values[c.key] = document.getElementById('s_' + c.key).value.trim(); });
     if(values.siteId === ''){ showToast('El Id del sitio es obligatorio', 'info'); return; }
 
+    const siteSaveBtnEl = document.getElementById('siteModalSave');
+    siteSaveBtnEl.disabled = true;
+    siteSaveBtnEl.textContent = 'Guardando…';
+
     try{
       const res = await window.storage.get(STORAGE_KEY_SITES, true);
       sites = res && res.value ? JSON.parse(res.value) : [];
     }catch(e){}
 
     const dupIdx = sites.findIndex(x => x.id !== s.id && (x.siteId||'').trim().toLowerCase() === values.siteId.toLowerCase());
-    if(dupIdx >= 0 && !confirm('Ya existe un sitio con ese Id. ¿Sobrescribir su información?')) return;
+    if(dupIdx >= 0 && !confirm('Ya existe un sitio con ese Id. ¿Sobrescribir su información?')){
+      siteSaveBtnEl.disabled = false;
+      siteSaveBtnEl.textContent = editingSiteId ? 'Guardar cambios' : 'Agregar sitio';
+      return;
+    }
 
     const updated = { id: s.id, ...values, updatedAt: Date.now() };
     if(dupIdx >= 0){
