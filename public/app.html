@@ -260,6 +260,8 @@
   .tab.active[data-tab="ERICSSON"] .count{ background:rgba(0,0,0,0.15); color:#2b2200; }
   .tab.active[data-tab="HUAWEI"]{ background:var(--huawei); color:#2b0704; border-color:var(--huawei); box-shadow:0 -2px 12px -4px rgba(255,79,69,0.5); }
   .tab.active[data-tab="HUAWEI"] .count{ background:rgba(0,0,0,0.2); color:#2b0704; }
+  .tab.active[data-tab="INGRESOS"]{ background:var(--blue); color:#001426; border-color:var(--blue); box-shadow:0 -2px 12px -4px rgba(79,182,255,0.5); }
+  .tab.active[data-tab="INGRESOS"] .count{ background:rgba(0,0,0,0.2); color:#001426; }
   .tab.active[data-tab="CERRADOS"]{ background:#c9d3e3; color:#06110f; border-color:#c9d3e3; box-shadow:0 -2px 12px -4px rgba(201,211,227,0.5); }
   .tab.active[data-tab="CERRADOS"] .count{ background:rgba(0,0,0,0.15); color:#06110f; }
   .tab.active[data-tab="ELECTRICO"]{ background:var(--warn); color:#332600; border-color:var(--warn); box-shadow:0 -2px 12px -4px rgba(255,201,61,0.5); }
@@ -395,6 +397,15 @@
   .ticket-shared-6{ background:rgba(88,222,222,0.14); color:#58dede; border-color:rgba(88,222,222,0.35); }
   .ticket-shared-7{ background:rgba(216,216,120,0.14); color:#d8d878; border-color:rgba(216,216,120,0.35); }
   tr[data-ticket-group]{ box-shadow: inset 3px 0 0 0 var(--ticket-group-color, transparent); }
+  /* Celdas de TK (OTS Sev3/Sev4, TP Change): clic para copiar el número al portapapeles. */
+  .tk-copy{ cursor:pointer; border-radius:4px; transition:background .12s, box-shadow .12s; }
+  .tk-copy:not(.ticket-shared):hover{ background:rgba(255,255,255,0.08); box-shadow:0 0 0 1px rgba(255,255,255,0.15); }
+  .tk-copy.ticket-shared:hover{ filter:brightness(1.25); }
+  .tk-copy:active{ transform:scale(0.96); }
+  /* Oculta la columna "Gestor" en las pestañas Ericsson/Huawei (ahí el gestor ya es obvio
+     por la pestaña activa); en Cerrados sigue visible porque mezcla ambos gestores. */
+  body.hide-gestor-col #casesView table th:nth-child(2),
+  body.hide-gestor-col #casesView table td:nth-child(2){ display:none; }
   .electrico-check{ display:flex; align-items:center; gap:9px; cursor:pointer; user-select:none; }
   .aviso-count-badge{
     display:inline-flex; align-items:center; justify-content:center; min-width:20px; height:20px;
@@ -856,6 +867,7 @@
   <div class="tabs" id="tabsBar">
     <button class="tab" data-tab="ERICSSON">Ericsson <span class="count" id="countEricsson">0</span></button>
     <button class="tab" data-tab="HUAWEI">Huawei <span class="count" id="countHuawei">0</span></button>
+    <button class="tab" data-tab="INGRESOS">Ingresos <span class="count" id="countIngresos">0</span></button>
     <button class="tab" data-tab="CERRADOS">Cerrados <span class="count" id="countCerrados">0</span></button>
     <button class="tab" data-tab="ELECTRICO">Reportes Eléctricos <span class="count" id="countElectrico">0</span><span id="tabAvisoDot" style="display:none; width:8px; height:8px; border-radius:50%; background:var(--danger); margin-left:2px; animation: aviso-pulse 1.6s infinite;"></span></button>
     <button class="tab" data-tab="SITES">Site ID – Name <span class="count" id="countSites">0</span></button>
@@ -1106,8 +1118,11 @@ function ticketCellHtml(value, colorMap, searchTerm){
   const v = (value||'').trim();
   if(!v) return dashHl(value, searchTerm);
   const colorIdx = colorMap.get(v);
-  if(colorIdx === undefined) return dashHl(value, searchTerm);
-  return `<span class="ticket-shared ticket-shared-${colorIdx}" title="Ticket compartido con otros sitios">${highlightText(value, searchTerm)}</span>`;
+  const copyData = `data-copy="${escapeHtml(v)}"`;
+  if(colorIdx === undefined){
+    return `<span class="tk-copy" ${copyData} title="Clic para copiar">${highlightText(value, searchTerm)}</span>`;
+  }
+  return `<span class="ticket-shared ticket-shared-${colorIdx} tk-copy" ${copyData} title="Ticket compartido con otros sitios · Clic para copiar">${highlightText(value, searchTerm)}</span>`;
 }
 const ESTADO_CLASS = {
   "INGRESO":"INGRESO",
@@ -1354,6 +1369,7 @@ function showTableSkeleton(){
   const map = {
     ERICSSON: { tbody:'tbody', empty:'emptyState', cols:18 },
     HUAWEI:   { tbody:'tbody', empty:'emptyState', cols:18 },
+    INGRESOS: { tbody:'tbody', empty:'emptyState', cols:18 },
     CERRADOS: { tbody:'tbody', empty:'emptyState', cols:18 },
     ELECTRICO:{ tbody:'electricoTbody', empty:'electricoEmptyState', cols:22 },
     SITES:    { tbody:'sitesTbody', empty:'sitesEmptyState', cols:17 }
@@ -1524,11 +1540,12 @@ function switchTab(tab){
   document.querySelectorAll('.tab').forEach(t=>{
     t.classList.toggle('active', t.dataset.tab === tab);
   });
-  document.getElementById('casesView').style.display = (tab === 'ERICSSON' || tab === 'HUAWEI' || tab === 'CERRADOS') ? 'block' : 'none';
+  document.getElementById('casesView').style.display = (tab === 'ERICSSON' || tab === 'HUAWEI' || tab === 'INGRESOS' || tab === 'CERRADOS') ? 'block' : 'none';
   document.getElementById('electricoView').style.display = (tab === 'ELECTRICO') ? 'block' : 'none';
   document.getElementById('sitesView').style.display = (tab === 'SITES') ? 'block' : 'none';
   document.getElementById('newBtn').style.display = (tab === 'ERICSSON' || tab === 'HUAWEI') ? 'inline-block' : 'none';
-  document.getElementById('exportBtn').style.display = (tab === 'ERICSSON' || tab === 'HUAWEI' || tab === 'CERRADOS') ? 'inline-block' : 'none';
+  document.getElementById('exportBtn').style.display = (tab === 'ERICSSON' || tab === 'HUAWEI' || tab === 'INGRESOS' || tab === 'CERRADOS') ? 'inline-block' : 'none';
+  document.body.classList.toggle('hide-gestor-col', tab === 'ERICSSON' || tab === 'HUAWEI');
   render();
 }
 
@@ -1545,9 +1562,9 @@ function currentGestor(){
 function buildFilterChips(){
   const box = document.getElementById('filters');
   box.querySelectorAll('.chip').forEach(c=>c.remove());
-  if(activeTab === 'CERRADOS') return; // en Cerrados no aplican los chips de estado (todos son CERRADO)
+  if(activeTab === 'CERRADOS' || activeTab === 'INGRESOS') return; // en Cerrados/Ingresos no aplican los chips de estado (todos comparten el mismo estado)
   const searchEl = document.getElementById('searchInput');
-  ESTADOS.filter(est => est !== 'CERRADO').forEach(est=>{
+  ESTADOS.filter(est => est !== 'CERRADO' && est !== 'INGRESO').forEach(est=>{
     const chip = document.createElement('div');
     chip.className = 'chip' + (activeFilters.has(est) ? ' active' : '');
     chip.dataset.estado = est;
@@ -1741,13 +1758,15 @@ function render(){
 
 function renderInner(){
   updateKpis();
-  const ericssonCount = records.filter(r => (r.gestor||'ERICSSON') === 'ERICSSON' && r.estado !== 'CERRADO').length;
-  const huaweiCount = records.filter(r => r.gestor === 'HUAWEI' && r.estado !== 'CERRADO').length;
+  const ericssonCount = records.filter(r => (r.gestor||'ERICSSON') === 'ERICSSON' && r.estado !== 'CERRADO' && r.estado !== 'INGRESO').length;
+  const huaweiCount = records.filter(r => r.gestor === 'HUAWEI' && r.estado !== 'CERRADO' && r.estado !== 'INGRESO').length;
+  const ingresosCount = records.filter(r => r.estado === 'INGRESO').length;
   const cerradosCount = records.filter(r => r.estado === 'CERRADO').length;
   const electricoCount = records.filter(r => r.reporteElectrico).length;
   const avisosPendientesCount = records.filter(r => r.seguimientoSolicitado && !r.seguimientoSolicitadoAtendido).length;
   document.getElementById('countEricsson').textContent = ericssonCount;
   document.getElementById('countHuawei').textContent = huaweiCount;
+  document.getElementById('countIngresos').textContent = ingresosCount;
   document.getElementById('countCerrados').textContent = cerradosCount;
   document.getElementById('countElectrico').textContent = electricoCount;
   document.getElementById('countSites').textContent = sites.length;
@@ -1765,13 +1784,16 @@ function renderInner(){
   buildFilterChips();
   const tbody = document.getElementById('tbody');
   const isCerradosTab = activeTab === 'CERRADOS';
+  const isIngresosTab = activeTab === 'INGRESOS';
   const gestor = currentGestor();
 
   let list;
   if(isCerradosTab){
     list = records.filter(r => r.estado === 'CERRADO');
+  } else if(isIngresosTab){
+    list = records.filter(r => r.estado === 'INGRESO');
   } else {
-    list = records.filter(r => (r.gestor||'ERICSSON') === gestor && r.estado !== 'CERRADO');
+    list = records.filter(r => (r.gestor||'ERICSSON') === gestor && r.estado !== 'CERRADO' && r.estado !== 'INGRESO');
   }
   list = list.slice().sort((a,b)=> (b.fechaAlarma||'').localeCompare(a.fechaAlarma||'') || (b.createdAt||0)-(a.createdAt||0));
 
@@ -1787,7 +1809,7 @@ function renderInner(){
   }
   updateSortIndicators();
 
-  if(!isCerradosTab && activeFilters.size > 0){
+  if(!isCerradosTab && !isIngresosTab && activeFilters.size > 0){
     list = list.filter(r => activeFilters.has(r.estado));
   }
   if(searchTerm.trim() !== ''){
@@ -1801,9 +1823,12 @@ function renderInner(){
   if(isCerradosTab){
     document.getElementById('subtitle').textContent =
       `Cerrados (Ericsson + Huawei) · ${list.length} registro${list.length===1?'':'s'}`;
+  } else if(isIngresosTab){
+    document.getElementById('subtitle').textContent =
+      `Ingresos (Ericsson + Huawei) · ${list.length} registro${list.length===1?'':'s'}`;
   } else {
     const gestorLabel = gestor === 'HUAWEI' ? 'Huawei' : 'Ericsson';
-    const totalForTab = records.filter(r => (r.gestor||'ERICSSON') === gestor && r.estado !== 'CERRADO').length;
+    const totalForTab = records.filter(r => (r.gestor||'ERICSSON') === gestor && r.estado !== 'CERRADO' && r.estado !== 'INGRESO').length;
     document.getElementById('subtitle').textContent =
       `${gestorLabel} · ${totalForTab} registro${totalForTab===1?'':'s'} · ${list.length} visible${list.length===1?'':'s'}`;
   }
@@ -1811,7 +1836,7 @@ function renderInner(){
   document.getElementById('emptyState').style.display = list.length === 0 ? 'block' : 'none';
   document.getElementById('emptyState').textContent = isCerradosTab
     ? 'No hay registros cerrados todavía.'
-    : 'No hay registros todavía en esta pestaña. Crea el primero con "+ Nuevo registro".';
+    : (isIngresosTab ? 'No hay registros en ingreso todavía.' : 'No hay registros todavía en esta pestaña. Crea el primero con "+ Nuevo registro".');
 
   const sharedOts1Colors = computeSharedTicketColors(list, 'otsSev1');
   const sharedOts2Colors = computeSharedTicketColors(list, 'otsSev2');
@@ -2768,12 +2793,14 @@ function downloadCsv(filename, headers, rows){
 
 async function exportToCSV(){
   const isCerradosTab = activeTab === 'CERRADOS';
+  const isIngresosTab = activeTab === 'INGRESOS';
   const gestor = currentGestor();
-  const list = isCerradosTab
-    ? records.filter(r => r.estado === 'CERRADO')
-    : records.filter(r => (r.gestor||'ERICSSON') === gestor && r.estado !== 'CERRADO');
+  let list;
+  if(isCerradosTab) list = records.filter(r => r.estado === 'CERRADO');
+  else if(isIngresosTab) list = records.filter(r => r.estado === 'INGRESO');
+  else list = records.filter(r => (r.gestor||'ERICSSON') === gestor && r.estado !== 'CERRADO' && r.estado !== 'INGRESO');
   if(list.length === 0){
-    showToast(isCerradosTab ? 'No hay registros cerrados para exportar' : 'No hay registros para exportar en esta pestaña', 'info');
+    showToast(isCerradosTab ? 'No hay registros cerrados para exportar' : (isIngresosTab ? 'No hay registros en ingreso para exportar' : 'No hay registros para exportar en esta pestaña'), 'info');
     return;
   }
   const btn = document.getElementById('exportBtn');
@@ -2803,10 +2830,12 @@ async function exportToCSV(){
     const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
     ws['!cols'] = headers.map(()=> ({ wch: 18 }));
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, isCerradosTab ? 'Cerrados' : (gestor === 'HUAWEI' ? 'Huawei' : 'Ericsson'));
+    const sheetName = isCerradosTab ? 'Cerrados' : (isIngresosTab ? 'Ingresos' : (gestor === 'HUAWEI' ? 'Huawei' : 'Ericsson'));
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
 
     const stamp = new Date().toISOString().slice(0,16).replace(/[:T]/g,'-');
-    XLSX.writeFile(wb, `bitacora_${isCerradosTab ? 'cerrados' : gestor.toLowerCase()}_${stamp}.xlsx`);
+    const fileTag = isCerradosTab ? 'cerrados' : (isIngresosTab ? 'ingresos' : gestor.toLowerCase());
+    XLSX.writeFile(wb, `bitacora_${fileTag}_${stamp}.xlsx`);
     showToast('Excel exportado');
   }catch(err){
     showToast(err.message || 'No se pudo generar el Excel');
@@ -2912,6 +2941,15 @@ function generateTeamsText(r){
   return '|' + parts.join('|') + '|';
 }
 
+// Mensaje tipo Teams para registros de INGRESO: usa fecha, Service ID/Nombre, Contacto,
+// Actividad y (si aplica) el TP asociado, en vez de los campos de falla (OTS/Proceso/Observación).
+function generateIngresoTeamsText(r){
+  const siteLabel = r.nombreSitio ? `${r.serviceId||''} - ${r.nombreSitio}` : (r.serviceId||'');
+  const parts = [r.fechaAlarma||'', siteLabel, r.contacto||'', r.actividad||''];
+  if((r.tpChange||'').trim() !== '') parts.push(`TP ${r.tpChange.trim()}`);
+  return '|INGRESO|' + parts.join('|') + '|';
+}
+
 /* ---------------- CASE MODAL ---------------- */
 
 function openModal(id, readOnly){
@@ -2923,6 +2961,7 @@ function openModal(id, readOnly){
   const r = editingId ? records.find(x=>x.id===editingId) : {
     id: uid(), estado:'EN GESTION', otsSev1:'', fechaAlarma:new Date().toISOString().slice(0,10),
     otsSev2:'', tpChange:'', serviceId:'', categoria:'', proceso:'', observacion:'', vip:'NO', seguridad:'', teams:'',
+    contacto:'', actividad:'',
     tipoProceso:'UNICO',
     gestor: defaultGestor, reporteElectrico:false, reporteElectricoEnviado:false,
     reporteElectricoTexto:'', reporteElectricoProveedor:'', reporteElectricoEstado:'',
@@ -2955,7 +2994,7 @@ function openModal(id, readOnly){
             ${ESTADOS.map(e=>`<option value="${e}" ${r.estado===e?'selected':''}>${e}</option>`).join('')}
           </select>
         </div>
-        <div class="full">
+        <div class="full" id="fieldTipoProceso">
           <label>Tipo de proceso</label>
           <div class="tipo-toggle">
             <button type="button" class="tipo-btn ${r.tipoProceso!=='MASIVO' ? 'active-tipo' : ''}" id="f_tipo_unico">Único</button>
@@ -2974,6 +3013,18 @@ function openModal(id, readOnly){
             </div>
           </div>
           <div id="siteHintBox"></div>
+        </div>
+        <div class="full" id="ingresoFieldsBox" style="${r.estado==='INGRESO' ? '' : 'display:none;'}">
+          <div class="unico-grid">
+            <div>
+              <label>Contacto</label>
+              <input type="text" id="f_contacto" value="${escapeHtml(r.contacto||'')}" placeholder="Nombre de quien reporta / atiende" />
+            </div>
+            <div>
+              <label>Actividad</label>
+              <input type="text" id="f_actividad" value="${escapeHtml(r.actividad||'')}" placeholder="Qué se va a realizar" />
+            </div>
+          </div>
         </div>
         <div class="full" id="masivoBox" style="${r.tipoProceso==='MASIVO' ? '' : 'display:none;'}">
           <label>Tipo de masivo (selecciona una o varias)</label>
@@ -3010,7 +3061,7 @@ function openModal(id, readOnly){
             </div>
           </div>
         </div>
-        <div>
+        <div id="fieldOtsSev1">
           <label>OTS Sev 3</label>
           <input type="text" id="f_otsSev1" value="${escapeHtml(r.otsSev1)}" inputmode="numeric" />
         </div>
@@ -3018,18 +3069,18 @@ function openModal(id, readOnly){
           <label>Fecha de la alarma</label>
           <input type="date" id="f_fecha" value="${escapeHtml(r.fechaAlarma)}" />
         </div>
-        <div>
+        <div id="fieldOtsSev2">
           <label>OTS Sev 4</label>
           <input type="text" id="f_otsSev2" value="${escapeHtml(r.otsSev2)}" inputmode="numeric" />
         </div>
         <div>
-          <label>TP Change</label>
+          <label id="f_tpChange_label">TP Change</label>
           <input type="text" id="f_tpChange" value="${escapeHtml(r.tpChange)}" inputmode="numeric" />
         </div>
         <div class="full" id="tkHint" style="display:none; margin-top:-8px;">
           <span style="font-size:11px; color:var(--text-faint);">⚠ En un masivo debes diligenciar al menos uno de estos 3 campos (OTS Sev 3, OTS Sev 4 o TP Change), solo con números.</span>
         </div>
-        <div class="full">
+        <div class="full" id="fieldProceso">
           <label>Proceso</label>
           <select id="f_proceso">
             <option value="" ${!r.proceso ? 'selected' : ''}>— Seleccionar —</option>
@@ -3037,7 +3088,7 @@ function openModal(id, readOnly){
             ${(r.proceso && !PROCESO_OPTIONS.includes(r.proceso)) ? `<option value="${escapeHtml(r.proceso)}" selected>${escapeHtml(r.proceso)}</option>` : ''}
           </select>
         </div>
-        <div class="full">
+        <div class="full" id="fieldObservacion">
           <label>Observación</label>
           <textarea id="f_observacion">${escapeHtml(r.observacion)}</textarea>
         </div>
@@ -3047,10 +3098,10 @@ function openModal(id, readOnly){
             <textarea id="f_teams">${escapeHtml(r.teams)}</textarea>
             <button type="button" class="gen-btn" id="f_gen" style="${readOnly ? 'display:none;' : ''}" title="El resumen se genera solo al llenar los campos; usa este botón para forzar la regeneración si ya lo editaste a mano">Regenerar</button>
           </div>
-          ${readOnly ? '' : `<span class="hint" style="font-size:11px;">Este resumen se arma solo con OTS Sev 3/4, Service ID, Nombre, Proceso y Observación. Si lo editas a mano aquí, tus cambios no se sobrescriben.</span>`}
+          ${readOnly ? '' : `<span class="hint" id="teamsHint" style="font-size:11px;">Este resumen se arma solo con OTS Sev 3/4, Service ID, Nombre, Proceso y Observación. Si lo editas a mano aquí, tus cambios no se sobrescriben.</span>`}
         </div>
         ${readOnly ? '' : `
-        <div class="full electrico-box">
+        <div class="full electrico-box" id="fieldReporteElectrico">
           <label class="electrico-check" style="margin-bottom:0;">
             <input type="checkbox" id="f_reporteElectrico" ${r.reporteElectrico ? 'checked' : ''} />
             <span class="lbl">⚡ Solicitar reporte eléctrico</span>
@@ -3088,6 +3139,14 @@ function openModal(id, readOnly){
     document.getElementById('masivoBox').style.display = 'none';
     document.getElementById('f_serviceId').value = r.serviceId || '';
     document.getElementById('f_nombre').value = r.nombreSitio || '';
+    if(r.estado === 'INGRESO'){
+      const fOts1 = document.getElementById('fieldOtsSev1'); if(fOts1) fOts1.style.display = 'none';
+      const fOts2 = document.getElementById('fieldOtsSev2'); if(fOts2) fOts2.style.display = 'none';
+      const fProc = document.getElementById('fieldProceso'); if(fProc) fProc.style.display = 'none';
+      const fObs = document.getElementById('fieldObservacion'); if(fObs) fObs.style.display = 'none';
+      const fTipo = document.getElementById('fieldTipoProceso'); if(fTipo) fTipo.style.display = 'none';
+      const tpLbl = document.getElementById('f_tpChange_label'); if(tpLbl) tpLbl.textContent = 'TP asociado (si aplica)';
+    }
     if(r.tipoProceso === 'MASIVO' && r.categoria){
       document.getElementById('f_tipo_masivo').classList.add('active-tipo');
       document.getElementById('f_tipo_unico').classList.remove('active-tipo');
@@ -3109,7 +3168,7 @@ function openModal(id, readOnly){
     return;
   }
 
-  const CASE_FORM_FIELD_IDS = ['f_estado','f_serviceId','f_nombre','f_otsSev1','f_fecha','f_otsSev2','f_tpChange','f_proceso','f_observacion','f_teams'];
+  const CASE_FORM_FIELD_IDS = ['f_estado','f_serviceId','f_nombre','f_otsSev1','f_fecha','f_otsSev2','f_tpChange','f_proceso','f_observacion','f_teams','f_contacto','f_actividad'];
   const initialSnapshot = {};
   CASE_FORM_FIELD_IDS.forEach(id => { initialSnapshot[id] = document.getElementById(id).value; });
   initialSnapshot['f_reporteElectrico'] = document.getElementById('f_reporteElectrico').checked;
@@ -3322,8 +3381,66 @@ function openModal(id, readOnly){
     refreshSeguimientoCountBadge();
   });
 
+  /* ---- Modo INGRESO: al elegir el estado "INGRESO" el formulario se reduce a los campos
+     relevantes (Fecha con la actual, Service ID, Nombre, Contacto, Actividad y TP asociado
+     si aplica) y oculta lo que no aplica (OTS Sev3/4, Proceso, Observación, masivo, eléctrico). ---- */
+  const estadoSelect = document.getElementById('f_estado');
+  const fechaInput = document.getElementById('f_fecha');
+  const ingresoFieldsBox = document.getElementById('ingresoFieldsBox');
+  const fieldOtsSev1 = document.getElementById('fieldOtsSev1');
+  const fieldOtsSev2 = document.getElementById('fieldOtsSev2');
+  const fieldProceso = document.getElementById('fieldProceso');
+  const fieldObservacion = document.getElementById('fieldObservacion');
+  const fieldTipoProceso = document.getElementById('fieldTipoProceso');
+  const fieldReporteElectrico = document.getElementById('fieldReporteElectrico');
+  const tpChangeLabel = document.getElementById('f_tpChange_label');
+  let prevEstadoWasIngreso = estadoSelect.value === 'INGRESO';
+
+  function updateIngresoModeUI(justSwitchedIn){
+    const ingresoMode = estadoSelect.value === 'INGRESO';
+    ingresoFieldsBox.style.display = ingresoMode ? '' : 'none';
+    fieldOtsSev1.style.display = ingresoMode ? 'none' : '';
+    fieldOtsSev2.style.display = ingresoMode ? 'none' : '';
+    fieldProceso.style.display = ingresoMode ? 'none' : '';
+    fieldObservacion.style.display = ingresoMode ? 'none' : '';
+    fieldTipoProceso.style.display = ingresoMode ? 'none' : '';
+    if(fieldReporteElectrico) fieldReporteElectrico.style.display = ingresoMode ? 'none' : '';
+    if(seguimientoBox) seguimientoBox.style.display = ingresoMode ? 'none' : '';
+    tpChangeLabel.textContent = ingresoMode ? 'TP asociado (si aplica)' : 'TP Change';
+    const teamsHintEl = document.getElementById('teamsHint');
+    if(teamsHintEl){
+      teamsHintEl.textContent = ingresoMode
+        ? 'Este resumen se arma solo con Fecha, Service ID, Nombre, Contacto, Actividad y TP asociado. Si lo editas a mano aquí, tus cambios no se sobrescriben.'
+        : 'Este resumen se arma solo con OTS Sev 3/4, Service ID, Nombre, Proceso y Observación. Si lo editas a mano aquí, tus cambios no se sobrescriben.';
+    }
+    if(ingresoMode && tipoProceso === 'MASIVO'){
+      tipoProceso = 'UNICO';
+      refreshTipoProcesoUI();
+    }
+    if(ingresoMode && justSwitchedIn){
+      fechaInput.value = new Date().toISOString().slice(0,10);
+    }
+    regenerateTeams(false);
+  }
+  estadoSelect.addEventListener('change', ()=>{
+    const nowIngreso = estadoSelect.value === 'INGRESO';
+    updateIngresoModeUI(nowIngreso && !prevEstadoWasIngreso);
+    prevEstadoWasIngreso = nowIngreso;
+  });
+
   // ---- Generación automática del resumen "Teams" a partir de los demás campos ----
   function computeTeamsText(){
+    if(estadoSelect.value === 'INGRESO'){
+      const draft = {
+        fechaAlarma: fechaInput.value,
+        serviceId: document.getElementById('f_serviceId').value,
+        nombreSitio: document.getElementById('f_nombre').value,
+        contacto: document.getElementById('f_contacto').value.trim(),
+        actividad: document.getElementById('f_actividad').value.trim(),
+        tpChange: document.getElementById('f_tpChange').value.trim()
+      };
+      return generateIngresoTeamsText(draft);
+    }
     const otsSev1 = document.getElementById('f_otsSev1').value.trim();
     const otsSev2 = document.getElementById('f_otsSev2').value.trim();
     const proceso = document.getElementById('f_proceso').value.trim();
@@ -3361,12 +3478,15 @@ function openModal(id, readOnly){
     lastAutoTeams = generated;
   }
 
+  updateIngresoModeUI(false);
+
+
   // Botón "Generar": fuerza la regeneración aunque el campo se haya editado a mano.
   document.getElementById('f_gen').onclick = ()=> regenerateTeams(true);
 
   // Cualquier campo que alimenta el resumen dispara la regeneración automática
   // (mientras el agente no haya escrito algo distinto a mano en el campo Teams).
-  const TEAMS_SOURCE_FIELD_IDS = ['f_otsSev1','f_otsSev2','f_serviceId','f_nombre','f_proceso','f_observacion'];
+  const TEAMS_SOURCE_FIELD_IDS = ['f_otsSev1','f_otsSev2','f_serviceId','f_nombre','f_proceso','f_observacion','f_fecha','f_tpChange','f_contacto','f_actividad'];
   TEAMS_SOURCE_FIELD_IDS.forEach(id=>{
     const el = document.getElementById(id);
     el.addEventListener('input', ()=> regenerateTeams(false));
@@ -3523,6 +3643,8 @@ function openModal(id, readOnly){
       tipoProceso: tipoProceso,
       proceso: document.getElementById('f_proceso').value.trim(),
       observacion: document.getElementById('f_observacion').value.trim(),
+      contacto: document.getElementById('f_contacto').value.trim(),
+      actividad: document.getElementById('f_actividad').value.trim(),
       vip: vip,
       seguridad: seguridad,
       teams: document.getElementById('f_teams').value,
@@ -3549,7 +3671,7 @@ function openModal(id, readOnly){
     // se aplica y se ve de inmediato; la relectura/reconciliación con el servidor
     // (para no pisar cambios de otro gestor) pasa por debajo, sin bloquear la pantalla
     closeModal();
-    switchTab(openedFromTab === 'ELECTRICO' ? 'ELECTRICO' : (updated.estado === 'CERRADO' ? 'CERRADOS' : (gestor === 'HUAWEI' ? 'HUAWEI' : 'ERICSSON')));
+    switchTab(openedFromTab === 'ELECTRICO' ? 'ELECTRICO' : (updated.estado === 'CERRADO' ? 'CERRADOS' : (updated.estado === 'INGRESO' ? 'INGRESOS' : (gestor === 'HUAWEI' ? 'HUAWEI' : 'ERICSSON'))));
     showToast(editingId ? 'Cambios guardados' : 'Registro creado');
     commitRecordsChange(list => {
       const idx = list.findIndex(x=>x.id === updated.id);
@@ -3966,6 +4088,19 @@ themeToggleBtn.addEventListener('click', async ()=>{
 });
 
 loadThemePreference();
+
+/* ---------------- CLIC PARA COPIAR TK (OTS Sev3, OTS Sev4, TP Change) ---------------- */
+// Delegado a nivel documento (una sola vez): cubre las celdas de todas las tablas
+// (Ericsson/Huawei y Eléctrico), incluso tras cada re-render, sin re-enlazar listeners.
+document.addEventListener('click', async (e)=>{
+  const cell = e.target.closest('.tk-copy');
+  if(!cell) return;
+  e.stopPropagation();
+  const value = cell.dataset.copy || cell.textContent.trim();
+  if(!value) return;
+  const ok = await copyTextToClipboard(value);
+  showToast(ok ? `TK ${value} copiado al portapapeles` : 'No se pudo copiar el TK', ok ? 'success' : 'error');
+});
 
 switchTab('ERICSSON');
 loadAll(true);
