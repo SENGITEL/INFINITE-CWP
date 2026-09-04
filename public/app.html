@@ -595,6 +595,7 @@
   .site-name-hint.found{ background:var(--accent-dim); color:#eafffb; }
   .site-name-hint.missing{ background:var(--warn-bg); color:var(--warn); }
   .site-name-hint.alert{ background:var(--danger); color:#2b0509; font-weight:700; border:1px solid var(--danger); }
+  .site-name-hint.ingreso-alert{ background:var(--blue-bg); color:var(--blue); font-weight:700; border:1px solid rgba(79,182,255,0.4); margin-top:6px; }
   body.theme-light .site-name-hint.found{ color:#0e5a52; }
 
   /* modal */
@@ -1563,6 +1564,19 @@ function lookupSiteByName(name){
   const q = name.trim().toLowerCase();
   if(q === '') return null;
   return sites.find(s => (s.siteName||'').trim().toLowerCase() === q) || null;
+}
+
+// Busca si existe un registro de INGRESO activo (aún sin salida registrada) para un Service ID,
+// para avisar al agente que ya hay alguien gestionando un ingreso en ese sitio/RBS.
+function findIngresoActivoPorServiceId(serviceId, excludeId){
+  if(!serviceId) return null;
+  const q = serviceId.trim().toLowerCase();
+  if(q === '') return null;
+  return records.find(rec =>
+    rec.estado === 'INGRESO' &&
+    rec.id !== excludeId &&
+    (rec.serviceId||'').trim().toLowerCase() === q
+  ) || null;
 }
 
 function normalizeVip(v){
@@ -3111,6 +3125,7 @@ function openModal(id, readOnly){
             </div>
           </div>
           <div id="siteHintBox"></div>
+          <div id="ingresoActivoHintBox"></div>
         </div>
         <div class="full" id="ingresoFieldsBox" style="${(r.estado==='INGRESO' || r.estado==='SALIDA') ? '' : 'display:none;'}">
           <div class="unico-grid">
@@ -3261,6 +3276,13 @@ function openModal(id, readOnly){
         ? `<div class="site-name-hint ${siteHintClass(roVip, roSeguridad)}">✓ Encontrado en base de sitios · VIP: ${escapeHtml(roVip)}${roSeguridad ? ' · Seguridad: ' + escapeHtml(roSeguridad) : ''}</div>`
         : `<div class="site-name-hint missing">⚠ Este Service ID no está en la base de sitios</div>`;
     }
+    const roIngresoActivoBox = document.getElementById('ingresoActivoHintBox');
+    if(roIngresoActivoBox){
+      const roActivo = findIngresoActivoPorServiceId(r.serviceId, r.id);
+      roIngresoActivoBox.innerHTML = roActivo
+        ? `<div class="site-name-hint ingreso-alert">⚠ Hay un ingreso activo en esta RBS${roActivo.fechaAlarma ? ` (desde ${escapeHtml(roActivo.fechaAlarma)})` : ''}${roActivo.contacto ? ` · Contacto: ${escapeHtml(roActivo.contacto)}` : ''}</div>`
+        : '';
+    }
     document.getElementById('modalCancel').onclick = closeModal;
     document.getElementById('modalCloseX').onclick = closeModal;
     return;
@@ -3398,6 +3420,20 @@ function openModal(id, readOnly){
   const serviceIdInput = document.getElementById('f_serviceId');
   const nombreInput = document.getElementById('f_nombre');
   const siteHintBox = document.getElementById('siteHintBox');
+  const ingresoActivoHintBox = document.getElementById('ingresoActivoHintBox');
+
+  function updateIngresoActivoHint(){
+    const val = serviceIdInput.value.trim();
+    if(val === ''){ ingresoActivoHintBox.innerHTML = ''; return; }
+    const activo = findIngresoActivoPorServiceId(val, editingId);
+    if(activo){
+      const quien = activo.contacto ? ` · Contacto: ${escapeHtml(activo.contacto)}` : '';
+      const cuando = activo.fechaAlarma ? ` (desde ${escapeHtml(activo.fechaAlarma)})` : '';
+      ingresoActivoHintBox.innerHTML = `<div class="site-name-hint ingreso-alert">⚠ Hay un ingreso activo en esta RBS${cuando}${quien}</div>`;
+    } else {
+      ingresoActivoHintBox.innerHTML = '';
+    }
+  }
 
   function applySiteMatch(site, autoFillNombre){
     if(autoFillNombre) nombreInput.value = site.siteName || '';
@@ -3438,9 +3474,10 @@ function openModal(id, readOnly){
   }
 
   // al escribir el Service ID, autocompleta Nombre y VIP; al abrir para editar, solo muestra el estado sin pisar datos ya guardados
-  serviceIdInput.addEventListener('input', ()=> updateSiteHint(true));
+  serviceIdInput.addEventListener('input', ()=> { updateSiteHint(true); updateIngresoActivoHint(); });
   nombreInput.addEventListener('change', tryMatchByNombre);
   updateSiteHint(false);
+  updateIngresoActivoHint();
   refreshTipoProcesoUI();
 
   const reporteElectricoCb = document.getElementById('f_reporteElectrico');
