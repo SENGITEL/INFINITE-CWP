@@ -363,6 +363,7 @@
     border:1px solid transparent;
   }
   .badge-INGRESO{ background:var(--blue-bg); color:var(--blue); border-color:rgba(79,182,255,0.25); }
+  .badge-SALIDA{ background:var(--seguimiento-bg); color:var(--seguimiento); border-color:rgba(93,255,176,0.3); }
   .badge-CERRADO{ background:var(--grey-bg); color:#c9d3e3; }
   .badge-TP{ background:var(--violet-bg); color:var(--violet); border-color:rgba(179,155,255,0.25); }
   .badge-GESTION{ background:var(--danger-bg); color:var(--danger); border-color:rgba(255,77,109,0.3); box-shadow:0 0 10px -3px var(--danger-glow); }
@@ -1070,7 +1071,7 @@ window.storage = {
     return { key, value, shared:true };
   }
 };
-const ESTADOS = ["INGRESO","CERRADO","TP (CHANGE)","EN GESTION","PENDIENTE POR CIERRE","ESCALADO A IP","ESCALADO A DWDM","SEGUIMIENTO"];
+const ESTADOS = ["INGRESO","SALIDA","CERRADO","TP (CHANGE)","EN GESTION","PENDIENTE POR CIERRE","ESCALADO A IP","ESCALADO A DWDM","SEGUIMIENTO"];
 const PROVEEDOR_LABELS = { "ENSA":"Ensa", "NATURGY":"Naturgy" };
 
 // Deduce el proveedor de energía a partir del NIS del sitio asociado al registro:
@@ -1115,7 +1116,9 @@ const PROCESO_OPTIONS = [
   "Falla de sectores 2G",
   "Contratista",
   "Tema Legal",
-  "En Monitoreo"
+  "En Monitoreo",
+  "Con afectación",
+  "Sin afectación"
 ];
 // Procesos que deben resaltarse en rojo en la tabla por ser de mayor criticidad.
 const PROCESO_CRITICOS = [
@@ -1161,6 +1164,7 @@ function ticketCellHtml(value, colorMap, searchTerm){
 }
 const ESTADO_CLASS = {
   "INGRESO":"INGRESO",
+  "SALIDA":"SALIDA",
   "CERRADO":"CERRADO",
   "TP (CHANGE)":"TP",
   "EN GESTION":"GESTION",
@@ -1173,6 +1177,7 @@ const ESTADO_CLASS = {
 // aunque no se perciban los colores (daltonismo, capturas en blanco y negro, etc.)
 const ESTADO_ICON = {
   "INGRESO":"＋",
+  "SALIDA":"→",
   "CERRADO":"✓",
   "TP":"↻",
   "GESTION":"⚠",
@@ -1617,7 +1622,7 @@ function buildFilterChips(){
     });
     return;
   }
-  ESTADOS.filter(est => est !== 'CERRADO' && est !== 'INGRESO').forEach(est=>{
+  ESTADOS.filter(est => est !== 'CERRADO' && est !== 'INGRESO' && est !== 'SALIDA').forEach(est=>{
     const chip = document.createElement('div');
     chip.className = 'chip' + (activeFilters.has(est) ? ' active' : '');
     chip.dataset.estado = est;
@@ -1811,9 +1816,9 @@ function render(){
 
 function renderInner(){
   updateKpis();
-  const ericssonCount = records.filter(r => (r.gestor||'ERICSSON') === 'ERICSSON' && r.estado !== 'CERRADO' && r.estado !== 'INGRESO').length;
-  const huaweiCount = records.filter(r => r.gestor === 'HUAWEI' && r.estado !== 'CERRADO' && r.estado !== 'INGRESO').length;
-  const ingresosCount = records.filter(r => r.estado === 'INGRESO').length;
+  const ericssonCount = records.filter(r => (r.gestor||'ERICSSON') === 'ERICSSON' && r.estado !== 'CERRADO' && r.estado !== 'INGRESO' && r.estado !== 'SALIDA').length;
+  const huaweiCount = records.filter(r => r.gestor === 'HUAWEI' && r.estado !== 'CERRADO' && r.estado !== 'INGRESO' && r.estado !== 'SALIDA').length;
+  const ingresosCount = records.filter(r => r.estado === 'INGRESO' || r.estado === 'SALIDA').length;
   const cerradosCount = records.filter(r => r.estado === 'CERRADO').length;
   const electricoCount = records.filter(r => r.reporteElectrico).length;
   const avisosPendientesCount = records.filter(r => r.seguimientoSolicitado && !r.seguimientoSolicitadoAtendido).length;
@@ -1844,11 +1849,11 @@ function renderInner(){
   if(isCerradosTab){
     list = records.filter(r => r.estado === 'CERRADO');
   } else if(isIngresosTab){
-    list = records.filter(r => r.estado === 'INGRESO');
-    if(ingresosSubFilter === 'INGRESOS') list = list.filter(r => !r.salidaAt);
-    else if(ingresosSubFilter === 'SALIDAS') list = list.filter(r => !!r.salidaAt);
+    list = records.filter(r => r.estado === 'INGRESO' || r.estado === 'SALIDA');
+    if(ingresosSubFilter === 'INGRESOS') list = list.filter(r => r.estado === 'INGRESO');
+    else if(ingresosSubFilter === 'SALIDAS') list = list.filter(r => r.estado === 'SALIDA');
   } else {
-    list = records.filter(r => (r.gestor||'ERICSSON') === gestor && r.estado !== 'CERRADO' && r.estado !== 'INGRESO');
+    list = records.filter(r => (r.gestor||'ERICSSON') === gestor && r.estado !== 'CERRADO' && r.estado !== 'INGRESO' && r.estado !== 'SALIDA');
   }
   list = list.slice().sort((a,b)=> (b.fechaAlarma||'').localeCompare(a.fechaAlarma||'') || (b.createdAt||0)-(a.createdAt||0));
 
@@ -1883,7 +1888,7 @@ function renderInner(){
       `Ingresos (Ericsson + Huawei) · ${list.length} registro${list.length===1?'':'s'}`;
   } else {
     const gestorLabel = gestor === 'HUAWEI' ? 'Huawei' : 'Ericsson';
-    const totalForTab = records.filter(r => (r.gestor||'ERICSSON') === gestor && r.estado !== 'CERRADO' && r.estado !== 'INGRESO').length;
+    const totalForTab = records.filter(r => (r.gestor||'ERICSSON') === gestor && r.estado !== 'CERRADO' && r.estado !== 'INGRESO' && r.estado !== 'SALIDA').length;
     document.getElementById('subtitle').textContent =
       `${gestorLabel} · ${totalForTab} registro${totalForTab===1?'':'s'} · ${list.length} visible${list.length===1?'':'s'}`;
   }
@@ -2009,12 +2014,15 @@ function renderInner(){
           <div class="estado-cell">
             ${badgeHtml(r.estado)}
             <div class="estado-actions">
-              ${r.estado === 'CERRADO'
-                ? `<button type="button" class="action-btn action-reopen" data-reopen="${r.id}" title="Reabrir">${ROW_ICONS.reopen}</button>`
-                : ((r.estado !== 'ESCALADO A IP' && r.estado !== 'ESCALADO A DWDM') ? `<button type="button" class="action-btn action-escalate" data-escalate="${r.id}" title="Escalar">${ROW_ICONS.escalate}</button>` : '')}
-              ${r.estado !== 'CERRADO' ? `<button type="button" class="action-btn action-close" data-close="${r.id}" title="Cerrar registro">${ROW_ICONS.check}</button>` : ''}
-              ${(r.estado !== 'CERRADO' && r.estado !== 'PENDIENTE POR CIERRE') ? `<button type="button" class="action-btn action-pending" data-pending="${r.id}" title="Marcar como pendiente de cierre">${ROW_ICONS.pending}</button>` : ''}
-              ${(r.estado === 'INGRESO' && !r.salidaAt) ? `<button type="button" class="action-btn action-salida" data-salida="${r.id}" title="Registrar salida">${ROW_ICONS.salida}</button>` : ''}
+              ${(r.estado === 'INGRESO' || r.estado === 'SALIDA')
+                ? (r.estado === 'INGRESO' ? `<button type="button" class="action-btn action-salida" data-salida="${r.id}" title="Registrar salida">${ROW_ICONS.salida}</button>` : '')
+                : `
+                  ${r.estado === 'CERRADO'
+                    ? `<button type="button" class="action-btn action-reopen" data-reopen="${r.id}" title="Reabrir">${ROW_ICONS.reopen}</button>`
+                    : ((r.estado !== 'ESCALADO A IP' && r.estado !== 'ESCALADO A DWDM') ? `<button type="button" class="action-btn action-escalate" data-escalate="${r.id}" title="Escalar">${ROW_ICONS.escalate}</button>` : '')}
+                  ${r.estado !== 'CERRADO' ? `<button type="button" class="action-btn action-close" data-close="${r.id}" title="Cerrar registro">${ROW_ICONS.check}</button>` : ''}
+                  ${(r.estado !== 'CERRADO' && r.estado !== 'PENDIENTE POR CIERRE') ? `<button type="button" class="action-btn action-pending" data-pending="${r.id}" title="Marcar como pendiente de cierre">${ROW_ICONS.pending}</button>` : ''}
+                `}
             </div>
           </div>
         </td>
@@ -2230,6 +2238,7 @@ function renderInner(){
       if(!rec) return;
       if(!confirm('¿Registrar la salida de este ingreso con la fecha y hora actuales?')) return;
       rec.salidaAt = Date.now();
+      rec.estado = 'SALIDA';
       ingresosSubFilter = 'SALIDAS';
       render();
       await saveRecords();
@@ -2886,8 +2895,8 @@ async function exportToCSV(){
   const gestor = currentGestor();
   let list;
   if(isCerradosTab) list = records.filter(r => r.estado === 'CERRADO');
-  else if(isIngresosTab) list = records.filter(r => r.estado === 'INGRESO');
-  else list = records.filter(r => (r.gestor||'ERICSSON') === gestor && r.estado !== 'CERRADO' && r.estado !== 'INGRESO');
+  else if(isIngresosTab) list = records.filter(r => r.estado === 'INGRESO' || r.estado === 'SALIDA');
+  else list = records.filter(r => (r.gestor||'ERICSSON') === gestor && r.estado !== 'CERRADO' && r.estado !== 'INGRESO' && r.estado !== 'SALIDA');
   if(list.length === 0){
     showToast(isCerradosTab ? 'No hay registros cerrados para exportar' : (isIngresosTab ? 'No hay registros en ingreso para exportar' : 'No hay registros para exportar en esta pestaña'), 'info');
     return;
@@ -3103,7 +3112,7 @@ function openModal(id, readOnly){
           </div>
           <div id="siteHintBox"></div>
         </div>
-        <div class="full" id="ingresoFieldsBox" style="${r.estado==='INGRESO' ? '' : 'display:none;'}">
+        <div class="full" id="ingresoFieldsBox" style="${(r.estado==='INGRESO' || r.estado==='SALIDA') ? '' : 'display:none;'}">
           <div class="unico-grid">
             <div>
               <label>Contacto</label>
@@ -3228,7 +3237,7 @@ function openModal(id, readOnly){
     document.getElementById('masivoBox').style.display = 'none';
     document.getElementById('f_serviceId').value = r.serviceId || '';
     document.getElementById('f_nombre').value = r.nombreSitio || '';
-    if(r.estado === 'INGRESO'){
+    if(r.estado === 'INGRESO' || r.estado === 'SALIDA'){
       const fOts1 = document.getElementById('fieldOtsSev1'); if(fOts1) fOts1.style.display = 'none';
       const fOts2 = document.getElementById('fieldOtsSev2'); if(fOts2) fOts2.style.display = 'none';
       const fProc = document.getElementById('fieldProceso'); if(fProc) fProc.style.display = 'none';
@@ -3483,10 +3492,10 @@ function openModal(id, readOnly){
   const fieldTipoProceso = document.getElementById('fieldTipoProceso');
   const fieldReporteElectrico = document.getElementById('fieldReporteElectrico');
   const tpChangeLabel = document.getElementById('f_tpChange_label');
-  let prevEstadoWasIngreso = estadoSelect.value === 'INGRESO';
+  let prevEstadoWasIngreso = (estadoSelect.value === 'INGRESO' || estadoSelect.value === 'SALIDA');
 
   function updateIngresoModeUI(justSwitchedIn){
-    const ingresoMode = estadoSelect.value === 'INGRESO';
+    const ingresoMode = (estadoSelect.value === 'INGRESO' || estadoSelect.value === 'SALIDA');
     ingresoFieldsBox.style.display = ingresoMode ? '' : 'none';
     fieldOtsSev1.style.display = ingresoMode ? 'none' : '';
     fieldOtsSev2.style.display = ingresoMode ? 'none' : '';
@@ -3512,14 +3521,14 @@ function openModal(id, readOnly){
     regenerateTeams(false);
   }
   estadoSelect.addEventListener('change', ()=>{
-    const nowIngreso = estadoSelect.value === 'INGRESO';
+    const nowIngreso = (estadoSelect.value === 'INGRESO' || estadoSelect.value === 'SALIDA');
     updateIngresoModeUI(nowIngreso && !prevEstadoWasIngreso);
     prevEstadoWasIngreso = nowIngreso;
   });
 
   // ---- Generación automática del resumen "Teams" a partir de los demás campos ----
   function computeTeamsText(){
-    if(estadoSelect.value === 'INGRESO'){
+    if(estadoSelect.value === 'INGRESO' || estadoSelect.value === 'SALIDA'){
       const draft = {
         fechaAlarma: fechaInput.value,
         serviceId: document.getElementById('f_serviceId').value,
@@ -3734,6 +3743,7 @@ function openModal(id, readOnly){
       observacion: document.getElementById('f_observacion').value.trim(),
       contacto: document.getElementById('f_contacto').value.trim(),
       actividad: document.getElementById('f_actividad').value.trim(),
+      salidaAt: r.salidaAt || null,
       vip: vip,
       seguridad: seguridad,
       teams: document.getElementById('f_teams').value,
@@ -3760,7 +3770,7 @@ function openModal(id, readOnly){
     // se aplica y se ve de inmediato; la relectura/reconciliación con el servidor
     // (para no pisar cambios de otro gestor) pasa por debajo, sin bloquear la pantalla
     closeModal();
-    switchTab(openedFromTab === 'ELECTRICO' ? 'ELECTRICO' : (updated.estado === 'CERRADO' ? 'CERRADOS' : (updated.estado === 'INGRESO' ? 'INGRESOS' : (gestor === 'HUAWEI' ? 'HUAWEI' : 'ERICSSON'))));
+    switchTab(openedFromTab === 'ELECTRICO' ? 'ELECTRICO' : (updated.estado === 'CERRADO' ? 'CERRADOS' : ((updated.estado === 'INGRESO' || updated.estado === 'SALIDA') ? 'INGRESOS' : (gestor === 'HUAWEI' ? 'HUAWEI' : 'ERICSSON'))));
     showToast(editingId ? 'Cambios guardados' : 'Registro creado');
     commitRecordsChange(list => {
       const idx = list.findIndex(x=>x.id === updated.id);
