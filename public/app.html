@@ -1025,6 +1025,27 @@ window.storage = {
 };
 const ESTADOS = ["INGRESO","CERRADO","TP (CHANGE)","EN GESTION","PENDIENTE POR CIERRE","ESCALADO A IP","ESCALADO A DWDM","SEGUIMIENTO"];
 const PROVEEDOR_LABELS = { "ENSA":"Ensa", "NATURGY":"Naturgy" };
+
+// Deduce el proveedor de energía a partir del NIS del sitio asociado al registro:
+// NIS de 7 dígitos -> Naturgy. NIS con otra cantidad de dígitos -> Ensa.
+// NIS vacío -> sin proveedor (en blanco). NIS con texto que no son solo dígitos ->
+// se conserva ese mismo texto tal cual (no se fuerza a Ensa/Naturgy).
+function deduceProveedorFromNis(nis){
+  const trimmed = String(nis||'').trim();
+  if(trimmed === '') return '';
+  if(/^\d+$/.test(trimmed)) return trimmed.length === 7 ? 'NATURGY' : 'ENSA';
+  return trimmed;
+}
+
+// Devuelve el texto a mostrar en la columna "Proveedor" de un registro: si el usuario
+// ya eligió uno manualmente (r.reporteElectricoProveedor) se respeta ese; si no, se
+// deduce a partir del NIS del sitio vinculado por Service ID.
+function proveedorLabelForRecord(r){
+  const key = r.reporteElectricoProveedor || deduceProveedorFromNis((lookupSiteById(r.serviceId)||{}).nis);
+  if(key === '') return '';
+  if(key === 'ENSA' || key === 'NATURGY') return PROVEEDOR_LABELS[key];
+  return key; // texto libre proveniente del NIS (no encaja en Ensa/Naturgy)
+}
 const PROCESO_OPTIONS = [
   "En Baterías",
   "En Generador",
@@ -1932,7 +1953,7 @@ function renderInner(){
             ? `<div class="copy-cell"><span>${escapeHtml(r.reporteElectricoTexto)}</span><button type="button" class="copy-btn" data-copy="${escapeHtml(r.reporteElectricoTexto)}" title="Copiar">📋</button></div>`
             : (r.reporteElectricoEnviado ? '—' : '<span class="empty-dash">—</span>')}
         </td>
-        <td class="mono">${r.reporteElectricoEnviado ? escapeHtml(PROVEEDOR_LABELS[r.reporteElectricoProveedor] || '—') : '<span class="empty-dash">—</span>'}</td>
+        <td class="mono">${r.reporteElectricoEnviado ? escapeHtml(proveedorLabelForRecord(r) || '—') : '<span class="empty-dash">—</span>'}</td>
         <td class="obs-text">
           ${r.reporteElectricoEnviado
             ? `${dash(r.seguimientoTexto)}${r.reporteElectricoSeguimientoAt ? `<div class="time-cell" style="margin-top:4px;">${formatDateTime(r.reporteElectricoSeguimientoAt)}</div>` : ''}`
@@ -2241,6 +2262,7 @@ function renderElectrico(){
     const proveedor = r.reporteElectricoProveedor || '';
     const estadoReporte = r.reporteElectricoEstado || '';
     const site = lookupSiteById(r.serviceId);
+    const deducedProveedor = proveedor === '' ? deduceProveedorFromNis(site ? site.nis : '') : '';
     const pendingAviso = r.seguimientoSolicitado && !r.seguimientoSolicitadoAtendido;
     return `
       <tr class="est-${cls} ${pendingAviso ? 'aviso-row' : ''}" data-id="${r.id}">
@@ -2268,10 +2290,15 @@ function renderElectrico(){
         </td>
         <td onclick="event.stopPropagation();">
           <select class="inline-select" data-proveedor="${r.id}">
-            <option value="" ${proveedor==='' ? 'selected' : ''}>—</option>
-            <option value="ENSA" ${proveedor==='ENSA' ? 'selected' : ''}>Ensa</option>
-            <option value="NATURGY" ${proveedor==='NATURGY' ? 'selected' : ''}>Naturgy</option>
+            <option value="" ${proveedor==='' && deducedProveedor==='' ? 'selected' : ''}>—</option>
+            <option value="ENSA" ${proveedor==='ENSA' || deducedProveedor==='ENSA' ? 'selected' : ''}>Ensa</option>
+            <option value="NATURGY" ${proveedor==='NATURGY' || deducedProveedor==='NATURGY' ? 'selected' : ''}>Naturgy</option>
           </select>
+          ${deducedProveedor !== '' && deducedProveedor !== 'ENSA' && deducedProveedor !== 'NATURGY'
+            ? `<div class="obs-text" style="font-size:11px; opacity:.7; margin-top:2px;" title="Proveedor no deducible del NIS, se muestra el NIS tal cual">NIS: ${escapeHtml(deducedProveedor)}</div>`
+            : (deducedProveedor === 'ENSA' || deducedProveedor === 'NATURGY'
+                ? `<div class="obs-text" style="font-size:11px; opacity:.6; margin-top:2px;">Sugerido según NIS</div>`
+                : '')}
         </td>
         <td onclick="event.stopPropagation();">
           <select class="inline-select estado-${estadoReporte}" data-estadoreporte="${r.id}">
@@ -2515,7 +2542,7 @@ const REPORT_COLUMNS_ELECTRICO = [
   { label:'Estado', get:r => r.estado || '—' },
   { label:'Service ID', get:r => r.serviceId || '—' },
   { label:'Nombre', get:r => r.nombreSitio || '—' },
-  { label:'Proveedor', get:r => PROVEEDOR_LABELS[r.reporteElectricoProveedor] || '—' },
+  { label:'Proveedor', get:r => proveedorLabelForRecord(r) || '—' },
   { label:'Estado reporte', get:r => r.reporteElectricoEstado || '—' },
   { label:'Seguimiento', get:r => r.seguimientoTexto || '—' },
   { label:'Aviso', get:r => (r.seguimientoSolicitado && !r.seguimientoSolicitadoAtendido) ? '🔔 Pendiente' : (r.seguimientoSolicitado ? 'Atendido' : '—') }
@@ -2766,7 +2793,7 @@ async function exportToCSV(){
           siteInfo ? (siteInfo.baterias||'') : '', siteInfo ? (siteInfo.generador||'') : '',
           r.reporteElectrico ? (r.reporteElectricoEnviado ? 'Solicitado - Enviado' : 'Solicitado - Pendiente') : '',
           r.reporteElectricoEnviado ? (r.reporteElectricoTexto||'') : '',
-          r.reporteElectricoEnviado ? (PROVEEDOR_LABELS[r.reporteElectricoProveedor]||'') : '',
+          r.reporteElectricoEnviado ? (proveedorLabelForRecord(r)||'') : '',
           r.reporteElectricoEnviado ? (r.seguimientoTexto||'') : '',
           r.reporteElectricoEnviado ? formatDateTime(r.reporteElectricoSeguimientoAt) : '',
           r.teams
@@ -2819,7 +2846,7 @@ async function exportElectricoToCSV(){
         avisoTexto, gestorLabel, r.estado, r.fechaAlarma, r.otsSev1, r.otsSev2,
         r.serviceId, r.nombreSitio, r.proceso,
         r.reporteElectricoTexto || '',
-        PROVEEDOR_LABELS[r.reporteElectricoProveedor] || '',
+        proveedorLabelForRecord(r) || '',
         ESTADO_REPORTE_LABELS[r.reporteElectricoEstado] || '',
         r.seguimientoTexto || '',
         site ? (site.medidor||'') : '',
