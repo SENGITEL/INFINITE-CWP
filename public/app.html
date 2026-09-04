@@ -406,6 +406,37 @@
      por la pestaña activa); en Cerrados sigue visible porque mezcla ambos gestores. */
   body.hide-gestor-col #casesView table th:nth-child(2),
   body.hide-gestor-col #casesView table td:nth-child(2){ display:none; }
+  /* En la pestaña Ingresos se ocultan las columnas de gestión de fallas (no aplican a
+     un registro de ingreso) y en su lugar se muestra la columna "Actividad". En el resto
+     de pestañas es al revés: se ocultan estas columnas y se muestra "Actividad" solo aquí. */
+  body.hide-ingresos-extra-cols #casesView table th:nth-child(3),
+  body.hide-ingresos-extra-cols #casesView table td:nth-child(3),
+  body.hide-ingresos-extra-cols #casesView table th:nth-child(5),
+  body.hide-ingresos-extra-cols #casesView table td:nth-child(5),
+  body.hide-ingresos-extra-cols #casesView table th:nth-child(9),
+  body.hide-ingresos-extra-cols #casesView table td:nth-child(9),
+  body.hide-ingresos-extra-cols #casesView table th:nth-child(10),
+  body.hide-ingresos-extra-cols #casesView table td:nth-child(10),
+  body.hide-ingresos-extra-cols #casesView table th:nth-child(12),
+  body.hide-ingresos-extra-cols #casesView table td:nth-child(12),
+  body.hide-ingresos-extra-cols #casesView table th:nth-child(13),
+  body.hide-ingresos-extra-cols #casesView table td:nth-child(13),
+  body.hide-ingresos-extra-cols #casesView table th:nth-child(14),
+  body.hide-ingresos-extra-cols #casesView table td:nth-child(14),
+  body.hide-ingresos-extra-cols #casesView table th:nth-child(15),
+  body.hide-ingresos-extra-cols #casesView table td:nth-child(15),
+  body.hide-ingresos-extra-cols #casesView table th:nth-child(16),
+  body.hide-ingresos-extra-cols #casesView table td:nth-child(16),
+  body.hide-ingresos-extra-cols #casesView table th:nth-child(17),
+  body.hide-ingresos-extra-cols #casesView table td:nth-child(17){ display:none; }
+  #casesView table th:nth-child(19),
+  #casesView table td:nth-child(19){ display:none; }
+  #casesView table th:nth-child(20),
+  #casesView table td:nth-child(20){ display:none; }
+  body.hide-ingresos-extra-cols #casesView table th:nth-child(19),
+  body.hide-ingresos-extra-cols #casesView table td:nth-child(19){ display:table-cell; }
+  body.hide-ingresos-extra-cols #casesView table th:nth-child(20),
+  body.hide-ingresos-extra-cols #casesView table td:nth-child(20){ display:table-cell; }
   .electrico-check{ display:flex; align-items:center; gap:9px; cursor:pointer; user-select:none; }
   .aviso-count-badge{
     display:inline-flex; align-items:center; justify-content:center; min-width:20px; height:20px;
@@ -495,6 +526,8 @@
   .action-close:hover{ color:#22c55e; background:rgba(34,197,94,.15); border-color:rgba(34,197,94,.35); }
   .action-escalate:hover{ color:var(--escip); background:var(--escip-bg); border-color:rgba(255,159,67,0.35); }
   .action-pending:hover{ color:var(--warn); background:var(--warn-bg); border-color:rgba(255,201,61,0.35); }
+  .action-reopen:hover{ color:var(--blue); background:var(--blue-bg); border-color:rgba(79,182,255,0.35); }
+  .action-salida:hover{ color:var(--violet); background:var(--violet-bg); border-color:rgba(178,143,255,0.35); }
   .escalate-menu{
     position:fixed; z-index:500; background:var(--panel); border:1px solid var(--line);
     border-radius:8px; padding:4px; box-shadow:0 8px 24px rgba(0,0,0,.35);
@@ -902,6 +935,8 @@
               <th>Proveedor</th>
               <th>Seguimiento Reporte Eléctrico</th>
               <th>Teams</th>
+              <th>Actividad</th>
+              <th>Salida</th>
             </tr>
           </thead>
           <tbody id="tbody"></tbody>
@@ -1200,6 +1235,7 @@ let records = [];
 let sites = [];
 let activeTab = "ERICSSON"; // ERICSSON | HUAWEI | SITES
 let activeFilters = new Set();
+let ingresosSubFilter = null; // null (todos) | 'INGRESOS' (sin salida) | 'SALIDAS' (con salida registrada)
 let editingId = null;
 let editingSiteId = null;
 let isModalOpen = false;
@@ -1287,6 +1323,8 @@ const ROW_ICONS = {
   escalate: `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="16 12 12 8 8 12"/><line x1="12" y1="16" x2="12" y2="8"/></svg>`,
   trash: `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>`,
   pending: `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,
+  reopen: `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-6.36L1 10"/></svg>`,
+  salida: `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>`,
 };
 let toastTimer = null;
 function showToast(msg, type){
@@ -1367,10 +1405,10 @@ function skeletonRowsHtml(colCount, rows){
 // trae los datos, para que la tabla no se vea en blanco un instante durante la sincronización.
 function showTableSkeleton(){
   const map = {
-    ERICSSON: { tbody:'tbody', empty:'emptyState', cols:18 },
-    HUAWEI:   { tbody:'tbody', empty:'emptyState', cols:18 },
-    INGRESOS: { tbody:'tbody', empty:'emptyState', cols:18 },
-    CERRADOS: { tbody:'tbody', empty:'emptyState', cols:18 },
+    ERICSSON: { tbody:'tbody', empty:'emptyState', cols:20 },
+    HUAWEI:   { tbody:'tbody', empty:'emptyState', cols:20 },
+    INGRESOS: { tbody:'tbody', empty:'emptyState', cols:20 },
+    CERRADOS: { tbody:'tbody', empty:'emptyState', cols:20 },
     ELECTRICO:{ tbody:'electricoTbody', empty:'electricoEmptyState', cols:22 },
     SITES:    { tbody:'sitesTbody', empty:'sitesEmptyState', cols:17 }
   };
@@ -1546,6 +1584,7 @@ function switchTab(tab){
   document.getElementById('newBtn').style.display = (tab === 'ERICSSON' || tab === 'HUAWEI') ? 'inline-block' : 'none';
   document.getElementById('exportBtn').style.display = (tab === 'ERICSSON' || tab === 'HUAWEI' || tab === 'INGRESOS' || tab === 'CERRADOS') ? 'inline-block' : 'none';
   document.body.classList.toggle('hide-gestor-col', tab === 'ERICSSON' || tab === 'HUAWEI');
+  document.body.classList.toggle('hide-ingresos-extra-cols', tab === 'INGRESOS');
   render();
 }
 
@@ -1562,8 +1601,22 @@ function currentGestor(){
 function buildFilterChips(){
   const box = document.getElementById('filters');
   box.querySelectorAll('.chip').forEach(c=>c.remove());
-  if(activeTab === 'CERRADOS' || activeTab === 'INGRESOS') return; // en Cerrados/Ingresos no aplican los chips de estado (todos comparten el mismo estado)
+  if(activeTab === 'CERRADOS') return; // en Cerrados no aplican los chips de estado (todos comparten el mismo estado)
   const searchEl = document.getElementById('searchInput');
+  if(activeTab === 'INGRESOS'){
+    [{key:'INGRESOS', label:'Ingresos'}, {key:'SALIDAS', label:'Salidas'}].forEach(o=>{
+      const chip = document.createElement('div');
+      chip.className = 'chip' + (ingresosSubFilter === o.key ? ' active' : '');
+      chip.textContent = o.label;
+      chip.onclick = ()=>{
+        ingresosSubFilter = ingresosSubFilter === o.key ? null : o.key;
+        buildFilterChips();
+        render();
+      };
+      box.insertBefore(chip, searchEl);
+    });
+    return;
+  }
   ESTADOS.filter(est => est !== 'CERRADO' && est !== 'INGRESO').forEach(est=>{
     const chip = document.createElement('div');
     chip.className = 'chip' + (activeFilters.has(est) ? ' active' : '');
@@ -1792,6 +1845,8 @@ function renderInner(){
     list = records.filter(r => r.estado === 'CERRADO');
   } else if(isIngresosTab){
     list = records.filter(r => r.estado === 'INGRESO');
+    if(ingresosSubFilter === 'INGRESOS') list = list.filter(r => !r.salidaAt);
+    else if(ingresosSubFilter === 'SALIDAS') list = list.filter(r => !!r.salidaAt);
   } else {
     list = records.filter(r => (r.gestor||'ERICSSON') === gestor && r.estado !== 'CERRADO' && r.estado !== 'INGRESO');
   }
@@ -1954,9 +2009,12 @@ function renderInner(){
           <div class="estado-cell">
             ${badgeHtml(r.estado)}
             <div class="estado-actions">
-              ${(r.estado !== 'ESCALADO A IP' && r.estado !== 'ESCALADO A DWDM') ? `<button type="button" class="action-btn action-escalate" data-escalate="${r.id}" title="Escalar">${ROW_ICONS.escalate}</button>` : ''}
+              ${r.estado === 'CERRADO'
+                ? `<button type="button" class="action-btn action-reopen" data-reopen="${r.id}" title="Reabrir">${ROW_ICONS.reopen}</button>`
+                : ((r.estado !== 'ESCALADO A IP' && r.estado !== 'ESCALADO A DWDM') ? `<button type="button" class="action-btn action-escalate" data-escalate="${r.id}" title="Escalar">${ROW_ICONS.escalate}</button>` : '')}
               ${r.estado !== 'CERRADO' ? `<button type="button" class="action-btn action-close" data-close="${r.id}" title="Cerrar registro">${ROW_ICONS.check}</button>` : ''}
               ${(r.estado !== 'CERRADO' && r.estado !== 'PENDIENTE POR CIERRE') ? `<button type="button" class="action-btn action-pending" data-pending="${r.id}" title="Marcar como pendiente de cierre">${ROW_ICONS.pending}</button>` : ''}
+              ${(r.estado === 'INGRESO' && !r.salidaAt) ? `<button type="button" class="action-btn action-salida" data-salida="${r.id}" title="Registrar salida">${ROW_ICONS.salida}</button>` : ''}
             </div>
           </div>
         </td>
@@ -1989,6 +2047,8 @@ function renderInner(){
             ? `<div class="copy-cell"><span class="text-flag" title="${escapeHtml(r.teams)}">Texto</span><button type="button" class="copy-btn" data-copy="${escapeHtml(r.teams)}" title="Copiar">📋</button></div>`
             : '<span class="empty-dash">—</span>'}
         </td>
+        <td class="obs-text">${dash(r.actividad)}</td>
+        <td class="mono">${r.salidaAt ? formatDateTime(r.salidaAt) : '<span class="empty-dash">—</span>'}</td>
       </tr>
     `;
   }
@@ -2046,6 +2106,8 @@ function renderInner(){
         <td class="obs-text" style="max-width:260px;">
           ${allTeams ? `<button type="button" class="copy-btn" data-copy="${escapeHtml(allTeams)}" title="Copiar todos">📋 Copiar todos</button>` : '<span class="empty-dash">—</span>'}
         </td>
+        <td><span class="empty-dash">—</span></td>
+        <td><span class="empty-dash">—</span></td>
       </tr>
     `;
   }
@@ -2063,7 +2125,7 @@ function renderInner(){
           const tkSharing = closeTkCluster(groupRecords);
           const tkPending = tkSharing.filter(x=>x.estado!=='CERRADO');
           const closeBtnHtml = tkPending.length > 0 ? `<button type="button" class="close-tk-btn" data-close-tk-group="${gkey}" title="Cerrar todos los registros que comparten TK con un solo clic">${ROW_ICONS.check} Cerrar por TK (${tkPending.length})</button>` : '';
-          rowsHtml.push(`<tr class="masivo-collapse-row" data-group="${gkey}"><td colspan="18"><button type="button" class="masivo-toggle-btn" data-toggle-group="${gkey}">▾ Contraer grupo masivo (${groupRecords.length} Service ID)</button>${closeBtnHtml}</td></tr>`);
+          rowsHtml.push(`<tr class="masivo-collapse-row" data-group="${gkey}"><td colspan="20"><button type="button" class="masivo-toggle-btn" data-toggle-group="${gkey}">▾ Contraer grupo masivo (${groupRecords.length} Service ID)</button>${closeBtnHtml}</td></tr>`);
           groupRecords.forEach(gr => rowsHtml.push(buildRowHtml(gr, 'masivo-child')));
         } else {
           rowsHtml.push(buildMasivoGroupRowHtml(gkey, groupRecords));
@@ -2145,6 +2207,33 @@ function renderInner(){
     btn.addEventListener('click', (e)=>{
       e.stopPropagation();
       showEscalateMenu(btn, btn.dataset.escalate);
+    });
+  });
+  tbody.querySelectorAll('[data-reopen]').forEach(btn=>{
+    btn.addEventListener('click', async (e)=>{
+      e.stopPropagation();
+      const id = btn.dataset.reopen;
+      const rec = records.find(r=>r.id===id);
+      if(!rec) return;
+      if(!confirm('¿Reabrir este registro? Pasará a estado "En gestión".')) return;
+      rec.estado = 'EN GESTION';
+      render();
+      await saveRecords();
+      showToast('Registro reabierto');
+    });
+  });
+  tbody.querySelectorAll('[data-salida]').forEach(btn=>{
+    btn.addEventListener('click', async (e)=>{
+      e.stopPropagation();
+      const id = btn.dataset.salida;
+      const rec = records.find(r=>r.id===id);
+      if(!rec) return;
+      if(!confirm('¿Registrar la salida de este ingreso con la fecha y hora actuales?')) return;
+      rec.salidaAt = Date.now();
+      ingresosSubFilter = 'SALIDAS';
+      render();
+      await saveRecords();
+      showToast('Salida registrada');
     });
   });
   tbody.querySelectorAll('[data-id-menu]').forEach(cell=>{
@@ -2961,7 +3050,7 @@ function openModal(id, readOnly){
   const r = editingId ? records.find(x=>x.id===editingId) : {
     id: uid(), estado:'EN GESTION', otsSev1:'', fechaAlarma:new Date().toISOString().slice(0,10),
     otsSev2:'', tpChange:'', serviceId:'', categoria:'', proceso:'', observacion:'', vip:'NO', seguridad:'', teams:'',
-    contacto:'', actividad:'',
+    contacto:'', actividad:'', salidaAt:null,
     tipoProceso:'UNICO',
     gestor: defaultGestor, reporteElectrico:false, reporteElectricoEnviado:false,
     reporteElectricoTexto:'', reporteElectricoProveedor:'', reporteElectricoEstado:'',
