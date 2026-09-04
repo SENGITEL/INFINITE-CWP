@@ -260,6 +260,8 @@
   .tab.active[data-tab="ERICSSON"] .count{ background:rgba(0,0,0,0.15); color:#2b2200; }
   .tab.active[data-tab="HUAWEI"]{ background:var(--huawei); color:#2b0704; border-color:var(--huawei); box-shadow:0 -2px 12px -4px rgba(255,79,69,0.5); }
   .tab.active[data-tab="HUAWEI"] .count{ background:rgba(0,0,0,0.2); color:#2b0704; }
+  .tab.active[data-tab="CERRADOS"]{ background:#c9d3e3; color:#06110f; border-color:#c9d3e3; box-shadow:0 -2px 12px -4px rgba(201,211,227,0.5); }
+  .tab.active[data-tab="CERRADOS"] .count{ background:rgba(0,0,0,0.15); color:#06110f; }
   .tab.active[data-tab="ELECTRICO"]{ background:var(--warn); color:#332600; border-color:var(--warn); box-shadow:0 -2px 12px -4px rgba(255,201,61,0.5); }
   .tab.active[data-tab="ELECTRICO"] .count{ background:rgba(0,0,0,0.15); color:#332600; }
   .tab.active[data-tab="SITES"]{ background:var(--panel); color:var(--accent); border-bottom:2px solid var(--accent); margin-bottom:-1px; box-shadow:0 -2px 12px -4px var(--accent-glow); }
@@ -854,6 +856,7 @@
   <div class="tabs" id="tabsBar">
     <button class="tab" data-tab="ERICSSON">Ericsson <span class="count" id="countEricsson">0</span></button>
     <button class="tab" data-tab="HUAWEI">Huawei <span class="count" id="countHuawei">0</span></button>
+    <button class="tab" data-tab="CERRADOS">Cerrados <span class="count" id="countCerrados">0</span></button>
     <button class="tab" data-tab="ELECTRICO">Reportes Eléctricos <span class="count" id="countElectrico">0</span><span id="tabAvisoDot" style="display:none; width:8px; height:8px; border-radius:50%; background:var(--danger); margin-left:2px; animation: aviso-pulse 1.6s infinite;"></span></button>
     <button class="tab" data-tab="SITES">Site ID – Name <span class="count" id="countSites">0</span></button>
   </div>
@@ -870,6 +873,7 @@
           <thead>
             <tr>
               <th class="sortable" data-sort="estado">Estado<span class="sort-ind"></span></th>
+              <th>Gestor</th>
               <th>OTS Sev 3</th>
               <th class="sortable" data-sort="fechaAlarma">Fecha de la alarma<span class="sort-ind"></span></th>
               <th>OTS Sev 4</th>
@@ -1327,8 +1331,9 @@ function skeletonRowsHtml(colCount, rows){
 // trae los datos, para que la tabla no se vea en blanco un instante durante la sincronización.
 function showTableSkeleton(){
   const map = {
-    ERICSSON: { tbody:'tbody', empty:'emptyState', cols:17 },
-    HUAWEI:   { tbody:'tbody', empty:'emptyState', cols:17 },
+    ERICSSON: { tbody:'tbody', empty:'emptyState', cols:18 },
+    HUAWEI:   { tbody:'tbody', empty:'emptyState', cols:18 },
+    CERRADOS: { tbody:'tbody', empty:'emptyState', cols:18 },
     ELECTRICO:{ tbody:'electricoTbody', empty:'electricoEmptyState', cols:22 },
     SITES:    { tbody:'sitesTbody', empty:'sitesEmptyState', cols:17 }
   };
@@ -1498,11 +1503,11 @@ function switchTab(tab){
   document.querySelectorAll('.tab').forEach(t=>{
     t.classList.toggle('active', t.dataset.tab === tab);
   });
-  document.getElementById('casesView').style.display = (tab === 'ERICSSON' || tab === 'HUAWEI') ? 'block' : 'none';
+  document.getElementById('casesView').style.display = (tab === 'ERICSSON' || tab === 'HUAWEI' || tab === 'CERRADOS') ? 'block' : 'none';
   document.getElementById('electricoView').style.display = (tab === 'ELECTRICO') ? 'block' : 'none';
   document.getElementById('sitesView').style.display = (tab === 'SITES') ? 'block' : 'none';
   document.getElementById('newBtn').style.display = (tab === 'ERICSSON' || tab === 'HUAWEI') ? 'inline-block' : 'none';
-  document.getElementById('exportBtn').style.display = (tab === 'ERICSSON' || tab === 'HUAWEI') ? 'inline-block' : 'none';
+  document.getElementById('exportBtn').style.display = (tab === 'ERICSSON' || tab === 'HUAWEI' || tab === 'CERRADOS') ? 'inline-block' : 'none';
   render();
 }
 
@@ -1519,8 +1524,9 @@ function currentGestor(){
 function buildFilterChips(){
   const box = document.getElementById('filters');
   box.querySelectorAll('.chip').forEach(c=>c.remove());
+  if(activeTab === 'CERRADOS') return; // en Cerrados no aplican los chips de estado (todos son CERRADO)
   const searchEl = document.getElementById('searchInput');
-  ESTADOS.forEach(est=>{
+  ESTADOS.filter(est => est !== 'CERRADO').forEach(est=>{
     const chip = document.createElement('div');
     chip.className = 'chip' + (activeFilters.has(est) ? ' active' : '');
     chip.dataset.estado = est;
@@ -1714,12 +1720,14 @@ function render(){
 
 function renderInner(){
   updateKpis();
-  const ericssonCount = records.filter(r => (r.gestor||'ERICSSON') === 'ERICSSON').length;
-  const huaweiCount = records.filter(r => r.gestor === 'HUAWEI').length;
+  const ericssonCount = records.filter(r => (r.gestor||'ERICSSON') === 'ERICSSON' && r.estado !== 'CERRADO').length;
+  const huaweiCount = records.filter(r => r.gestor === 'HUAWEI' && r.estado !== 'CERRADO').length;
+  const cerradosCount = records.filter(r => r.estado === 'CERRADO').length;
   const electricoCount = records.filter(r => r.reporteElectrico).length;
   const avisosPendientesCount = records.filter(r => r.seguimientoSolicitado && !r.seguimientoSolicitadoAtendido).length;
   document.getElementById('countEricsson').textContent = ericssonCount;
   document.getElementById('countHuawei').textContent = huaweiCount;
+  document.getElementById('countCerrados').textContent = cerradosCount;
   document.getElementById('countElectrico').textContent = electricoCount;
   document.getElementById('countSites').textContent = sites.length;
   document.getElementById('tabAvisoDot').style.display = avisosPendientesCount > 0 ? 'inline-block' : 'none';
@@ -1735,11 +1743,16 @@ function renderInner(){
 
   buildFilterChips();
   const tbody = document.getElementById('tbody');
+  const isCerradosTab = activeTab === 'CERRADOS';
   const gestor = currentGestor();
-  let list = records
-    .filter(r => (r.gestor||'ERICSSON') === gestor)
-    .slice()
-    .sort((a,b)=> (b.fechaAlarma||'').localeCompare(a.fechaAlarma||'') || (b.createdAt||0)-(a.createdAt||0));
+
+  let list;
+  if(isCerradosTab){
+    list = records.filter(r => r.estado === 'CERRADO');
+  } else {
+    list = records.filter(r => (r.gestor||'ERICSSON') === gestor && r.estado !== 'CERRADO');
+  }
+  list = list.slice().sort((a,b)=> (b.fechaAlarma||'').localeCompare(a.fechaAlarma||'') || (b.createdAt||0)-(a.createdAt||0));
 
   if(sortColumn){
     const dir = sortDirection === 'asc' ? 1 : -1;
@@ -1753,7 +1766,7 @@ function renderInner(){
   }
   updateSortIndicators();
 
-  if(activeFilters.size > 0){
+  if(!isCerradosTab && activeFilters.size > 0){
     list = list.filter(r => activeFilters.has(r.estado));
   }
   if(searchTerm.trim() !== ''){
@@ -1764,12 +1777,20 @@ function renderInner(){
     );
   }
 
-  const gestorLabel = gestor === 'HUAWEI' ? 'Huawei' : 'Ericsson';
-  const totalForTab = records.filter(r => (r.gestor||'ERICSSON') === gestor).length;
-  document.getElementById('subtitle').textContent =
-    `${gestorLabel} · ${totalForTab} registro${totalForTab===1?'':'s'} · ${list.length} visible${list.length===1?'':'s'}`;
+  if(isCerradosTab){
+    document.getElementById('subtitle').textContent =
+      `Cerrados (Ericsson + Huawei) · ${list.length} registro${list.length===1?'':'s'}`;
+  } else {
+    const gestorLabel = gestor === 'HUAWEI' ? 'Huawei' : 'Ericsson';
+    const totalForTab = records.filter(r => (r.gestor||'ERICSSON') === gestor && r.estado !== 'CERRADO').length;
+    document.getElementById('subtitle').textContent =
+      `${gestorLabel} · ${totalForTab} registro${totalForTab===1?'':'s'} · ${list.length} visible${list.length===1?'':'s'}`;
+  }
 
   document.getElementById('emptyState').style.display = list.length === 0 ? 'block' : 'none';
+  document.getElementById('emptyState').textContent = isCerradosTab
+    ? 'No hay registros cerrados todavía.'
+    : 'No hay registros todavía en esta pestaña. Crea el primero con "+ Nuevo registro".';
 
   const sharedOts1Colors = computeSharedTicketColors(list, 'otsSev1');
   const sharedOts2Colors = computeSharedTicketColors(list, 'otsSev2');
@@ -1893,6 +1914,7 @@ function renderInner(){
             </div>
           </div>
         </td>
+        <td class="mono">${r.gestor === 'HUAWEI' ? 'Huawei' : 'Ericsson'}</td>
         <td class="mono">${ticketCellHtml(r.otsSev1, sharedOts1Colors, searchTerm)}</td>
         <td class="mono">${dash(r.fechaAlarma)}</td>
         <td class="mono">${ticketCellHtml(r.otsSev2, sharedOts2Colors, searchTerm)}</td>
@@ -1951,6 +1973,7 @@ function renderInner(){
             </div>
           </div>
         </td>
+        <td class="mono">${first.gestor === 'HUAWEI' ? 'Huawei' : 'Ericsson'}</td>
         <td class="mono">
           ${ticketCellHtml(first.otsSev1, sharedOts1Colors, searchTerm)}
           <div><button type="button" class="masivo-toggle-btn" data-toggle-group="${groupKey}" title="Ver/editar registros individuales">Expandir</button></div>
@@ -1994,7 +2017,7 @@ function renderInner(){
           const tkSharing = closeTkCluster(groupRecords);
           const tkPending = tkSharing.filter(x=>x.estado!=='CERRADO');
           const closeBtnHtml = tkPending.length > 0 ? `<button type="button" class="close-tk-btn" data-close-tk-group="${gkey}" title="Cerrar todos los registros que comparten TK con un solo clic">${ROW_ICONS.check} Cerrar por TK (${tkPending.length})</button>` : '';
-          rowsHtml.push(`<tr class="masivo-collapse-row" data-group="${gkey}"><td colspan="17"><button type="button" class="masivo-toggle-btn" data-toggle-group="${gkey}">▾ Contraer grupo masivo (${groupRecords.length} Service ID)</button>${closeBtnHtml}</td></tr>`);
+          rowsHtml.push(`<tr class="masivo-collapse-row" data-group="${gkey}"><td colspan="18"><button type="button" class="masivo-toggle-btn" data-toggle-group="${gkey}">▾ Contraer grupo masivo (${groupRecords.length} Service ID)</button>${closeBtnHtml}</td></tr>`);
           groupRecords.forEach(gr => rowsHtml.push(buildRowHtml(gr, 'masivo-child')));
         } else {
           rowsHtml.push(buildMasivoGroupRowHtml(gkey, groupRecords));
@@ -2717,10 +2740,13 @@ function downloadCsv(filename, headers, rows){
 }
 
 async function exportToCSV(){
+  const isCerradosTab = activeTab === 'CERRADOS';
   const gestor = currentGestor();
-  const list = records.filter(r => (r.gestor||'ERICSSON') === gestor);
+  const list = isCerradosTab
+    ? records.filter(r => r.estado === 'CERRADO')
+    : records.filter(r => (r.gestor||'ERICSSON') === gestor && r.estado !== 'CERRADO');
   if(list.length === 0){
-    showToast('No hay registros para exportar en esta pestaña', 'info');
+    showToast(isCerradosTab ? 'No hay registros cerrados para exportar' : 'No hay registros para exportar en esta pestaña', 'info');
     return;
   }
   const btn = document.getElementById('exportBtn');
@@ -2728,14 +2754,14 @@ async function exportToCSV(){
   if(btn){ btn.disabled = true; btn.textContent = '⏳ Generando…'; }
   try{
     await loadSheetJS();
-    const headers = ['Estado','OTS Sev 3','Fecha de la alarma','OTS Sev 4','TP Change','Service ID','Nombre','Categoría','Proceso','Observación','VIP','Baterías','Generador','Reporte Eléctrico','N° Reporte Eléctrico','Proveedor','Seguimiento Reporte Eléctrico','Hora Seguimiento','Teams'];
+    const headers = ['Estado','Gestor','OTS Sev 3','Fecha de la alarma','OTS Sev 4','TP Change','Service ID','Nombre','Categoría','Proceso','Observación','VIP','Baterías','Generador','Reporte Eléctrico','N° Reporte Eléctrico','Proveedor','Seguimiento Reporte Eléctrico','Hora Seguimiento','Teams'];
     const rows = list
       .slice()
       .sort((a,b)=> (b.fechaAlarma||'').localeCompare(a.fechaAlarma||'') || (b.createdAt||0)-(a.createdAt||0))
       .map(r => {
         const siteInfo = lookupSiteById(r.serviceId);
         return [
-          r.estado, r.otsSev1, r.fechaAlarma, r.otsSev2, r.tpChange,
+          r.estado, (r.gestor === 'HUAWEI' ? 'Huawei' : 'Ericsson'), r.otsSev1, r.fechaAlarma, r.otsSev2, r.tpChange,
           r.serviceId, r.nombreSitio, r.categoria, r.proceso, r.observacion, r.vip,
           siteInfo ? (siteInfo.baterias||'') : '', siteInfo ? (siteInfo.generador||'') : '',
           r.reporteElectrico ? (r.reporteElectricoEnviado ? 'Solicitado - Enviado' : 'Solicitado - Pendiente') : '',
@@ -2750,10 +2776,10 @@ async function exportToCSV(){
     const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
     ws['!cols'] = headers.map(()=> ({ wch: 18 }));
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, gestor === 'HUAWEI' ? 'Huawei' : 'Ericsson');
+    XLSX.utils.book_append_sheet(wb, ws, isCerradosTab ? 'Cerrados' : (gestor === 'HUAWEI' ? 'Huawei' : 'Ericsson'));
 
     const stamp = new Date().toISOString().slice(0,16).replace(/[:T]/g,'-');
-    XLSX.writeFile(wb, `bitacora_${gestor.toLowerCase()}_${stamp}.xlsx`);
+    XLSX.writeFile(wb, `bitacora_${isCerradosTab ? 'cerrados' : gestor.toLowerCase()}_${stamp}.xlsx`);
     showToast('Excel exportado');
   }catch(err){
     showToast(err.message || 'No se pudo generar el Excel');
@@ -3496,7 +3522,7 @@ function openModal(id, readOnly){
     // se aplica y se ve de inmediato; la relectura/reconciliación con el servidor
     // (para no pisar cambios de otro gestor) pasa por debajo, sin bloquear la pantalla
     closeModal();
-    switchTab(openedFromTab === 'ELECTRICO' ? 'ELECTRICO' : (gestor === 'HUAWEI' ? 'HUAWEI' : 'ERICSSON'));
+    switchTab(openedFromTab === 'ELECTRICO' ? 'ELECTRICO' : (updated.estado === 'CERRADO' ? 'CERRADOS' : (gestor === 'HUAWEI' ? 'HUAWEI' : 'ERICSSON')));
     showToast(editingId ? 'Cambios guardados' : 'Registro creado');
     commitRecordsChange(list => {
       const idx = list.findIndex(x=>x.id === updated.id);
