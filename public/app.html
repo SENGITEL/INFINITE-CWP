@@ -1164,6 +1164,7 @@ let editingId = null;
 let editingSiteId = null;
 let isModalOpen = false;
 let isInlineEditing = false; // true mientras el usuario tiene el foco en un campo editable de una tabla (evita que la sincronización automática le borre lo que está escribiendo
+let isCommitting = false; // true mientras un guardado optimista está reconciliando con el servidor por debajo (evita que el sondeo de fondo, que llega con la versión vieja, pise el cambio que la persona acaba de ver aplicado en pantalla)
 let searchTerm = "";
 let sortColumn = null;   // 'estado' | 'fechaAlarma' | 'serviceId' | null (null = orden por defecto)
 let sortDirection = 'asc'; // 'asc' | 'desc'
@@ -1402,6 +1403,55 @@ async function saveSites(){
   }catch(e){
     setSync('error al guardar', 'error');
     showToast('Error guardando la base de sitios.', 'error');
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Guardado "al estilo Excel": el cambio se aplica y se ve en pantalla de inmediato
+// (mutate() sobre el arreglo local), y solo DESPUÉS, por debajo y sin bloquear nada,
+// se relee lo último que haya en el servidor, se reaplica ahí mismo el mismo cambio
+// (por si otro gestor guardó algo distinto mientras tanto) y se guarda ese resultado.
+// Mientras dura esa reconciliación, isCommitting evita que el sondeo de fondo
+// sobreescriba con la versión vieja el cambio que la persona ya está viendo.
+async function commitRecordsChange(mutate){
+  isCommitting = true;
+  try{
+    mutate(records);
+    render();
+    try{
+      const res = await window.storage.get(STORAGE_KEY, true);
+      if(res && res.value){
+        const fresh = JSON.parse(res.value);
+        mutate(fresh);
+        records = fresh;
+        render();
+      }
+    }catch(e){ /* si falla la relectura, se guarda igual la copia local */ }
+    await saveRecords();
+  } finally {
+    isCommitting = false;
+  }
+}
+
+async function commitSitesChange(mutate){
+  isCommitting = true;
+  try{
+    mutate(sites);
+    buildSiteDatalist();
+    render();
+    try{
+      const res = await window.storage.get(STORAGE_KEY_SITES, true);
+      if(res && res.value){
+        const fresh = JSON.parse(res.value);
+        mutate(fresh);
+        sites = fresh;
+        buildSiteDatalist();
+        render();
+      }
+    }catch(e){ /* si falla la relectura, se guarda igual la copia local */ }
+    await saveSites();
+  } finally {
+    isCommitting = false;
   }
 }
 
@@ -3307,15 +3357,7 @@ function openModal(id, readOnly){
     };
   }
 
-  document.getElementById('modalSave').onclick = async ()=>{
-    const saveBtnEl = document.getElementById('modalSave');
-    function setSaving(){
-      // feedback inmediato: aunque el guardado tarde por la verificación de cambios
-      // recientes de otros gestores, el botón muestra de una vez que quedó registrado el clic
-      saveBtnEl.disabled = true;
-      saveBtnEl.dataset.originalText = saveBtnEl.textContent;
-      saveBtnEl.textContent = 'Guardando…';
-    }
+  document.getElementById('modalSave').onclick = ()=>{
     // ----- MODO MASIVO: una o varias categorías, cada una con sus propios Service ID (solo al crear) -----
     if(tipoProceso === 'MASIVO' && !editingId){
       const groups = MASIVO_CATS
@@ -3358,14 +3400,9 @@ function openModal(id, readOnly){
         return;
       }
 
-      try{
-        setSaving();
-        const res = await window.storage.get(STORAGE_KEY, true);
-        records = res && res.value ? JSON.parse(res.value) : [];
-      }catch(e){}
-
       let totalCreated = 0;
       const masivoGroupId = uid(); // agrupa visualmente TODOS los registros de este envío masivo (todas las categorías, mismo TK) en una sola fila contraída
+      const newRecs = [];
       groups.forEach(group=>{
         group.ids.forEach(sid=>{
           const site = lookupSiteById(sid);
@@ -3376,7 +3413,7 @@ function openModal(id, readOnly){
             otsSev1: sharedOtsSev1, serviceId: sid, otsSev2: sharedOtsSev2,
             nombreSitio, categoria: group.categoria, proceso: sharedProceso, observacion: sharedObservacion
           });
-          records.push({
+          newRecs.push({
             id: uid(), gestor, estado: sharedEstado,
             otsSev1: sharedOtsSev1, fechaAlarma: sharedFecha, otsSev2: sharedOtsSev2, tpChange: sharedTpChange,
             serviceId: sid, nombreSitio, categoria: group.categoria, tipoProceso: 'MASIVO', masivoGroupId, proceso: sharedProceso, observacion: sharedObservacion,
@@ -3398,8 +3435,11 @@ function openModal(id, readOnly){
 
       closeModal();
       switchTab(gestor === 'HUAWEI' ? 'HUAWEI' : 'ERICSSON');
-      await saveRecords();
       showToast(`${totalCreated} registro${totalCreated===1?'':'s'} creado${totalCreated===1?'':'s'}`);
+      // se ve de inmediato; la reconciliación con el servidor pasa por debajo, sin bloquear
+      commitRecordsChange(list => {
+        newRecs.forEach(nr => { if(!list.some(x=>x.id===nr.id)) list.push(nr); });
+      });
       return;
     }
 
@@ -3453,20 +3493,15 @@ function openModal(id, readOnly){
       seguimientoSolicitadoCount: seguimientoSolicitadoCount,
       createdAt: r.createdAt || Date.now()
     };
-    // reload latest before merging to reduce clobbering concurrent edits
-    try{
-      setSaving();
-      const res = await window.storage.get(STORAGE_KEY, true);
-      records = res && res.value ? JSON.parse(res.value) : [];
-    }catch(e){}
-
-    const idx = records.findIndex(x=>x.id === updated.id);
-    if(idx >= 0) records[idx] = updated; else records.push(updated);
-
+    // se aplica y se ve de inmediato; la relectura/reconciliación con el servidor
+    // (para no pisar cambios de otro gestor) pasa por debajo, sin bloquear la pantalla
     closeModal();
     switchTab(openedFromTab === 'ELECTRICO' ? 'ELECTRICO' : (gestor === 'HUAWEI' ? 'HUAWEI' : 'ERICSSON'));
-    await saveRecords();
     showToast(editingId ? 'Cambios guardados' : 'Registro creado');
+    commitRecordsChange(list => {
+      const idx = list.findIndex(x=>x.id === updated.id);
+      if(idx >= 0) list[idx] = updated; else list.push(updated);
+    });
   };
 }
 
@@ -3540,40 +3575,30 @@ function openSiteModal(id){
     };
   }
 
-  document.getElementById('siteModalSave').onclick = async ()=>{
+  document.getElementById('siteModalSave').onclick = ()=>{
     const values = {};
     SITE_COLUMNS.forEach(c => { values[c.key] = document.getElementById('s_' + c.key).value.trim(); });
     if(values.siteId === ''){ showToast('El Id del sitio es obligatorio', 'info'); return; }
 
-    const siteSaveBtnEl = document.getElementById('siteModalSave');
-    siteSaveBtnEl.disabled = true;
-    siteSaveBtnEl.textContent = 'Guardando…';
-
-    try{
-      const res = await window.storage.get(STORAGE_KEY_SITES, true);
-      sites = res && res.value ? JSON.parse(res.value) : [];
-    }catch(e){}
-
     const dupIdx = sites.findIndex(x => x.id !== s.id && (x.siteId||'').trim().toLowerCase() === values.siteId.toLowerCase());
-    if(dupIdx >= 0 && !confirm('Ya existe un sitio con ese Id. ¿Sobrescribir su información?')){
-      siteSaveBtnEl.disabled = false;
-      siteSaveBtnEl.textContent = editingSiteId ? 'Guardar cambios' : 'Agregar sitio';
-      return;
-    }
+    if(dupIdx >= 0 && !confirm('Ya existe un sitio con ese Id. ¿Sobrescribir su información?')) return;
 
     const updated = { id: s.id, ...values, updatedAt: Date.now() };
-    if(dupIdx >= 0){
-      sites[dupIdx] = updated;
-    } else {
-      const idx = sites.findIndex(x=>x.id === updated.id);
-      if(idx >= 0) sites[idx] = updated; else sites.push(updated);
-    }
+    const dupTargetId = dupIdx >= 0 ? sites[dupIdx].id : null;
 
-    buildSiteDatalist();
+    // se aplica y se ve de inmediato; la relectura/reconciliación con el servidor
+    // pasa por debajo, sin bloquear la pantalla
     closeModal();
-    render();
-    await saveSites();
     showToast(editingSiteId ? 'Sitio actualizado' : 'Sitio agregado');
+    commitSitesChange(list => {
+      if(dupTargetId){
+        const i = list.findIndex(x=>x.id === dupTargetId);
+        if(i >= 0) list[i] = updated; else list.push(updated);
+      } else {
+        const i = list.findIndex(x=>x.id === updated.id);
+        if(i >= 0) list[i] = updated; else list.push(updated);
+      }
+    });
   };
 }
 
@@ -3843,16 +3868,16 @@ document.getElementById('electricoModeCerrados').addEventListener('click', ()=>{
 
 // poll for changes from other users/agents working simultaneously
 setInterval(()=>{
-  if(!isModalOpen && !isInlineEditing) loadAll(false);
+  if(!isModalOpen && !isInlineEditing && !isCommitting) loadAll(false);
 }, 6000);
 
 // al volver a esta pestaña/ventana, sincroniza de inmediato en vez de esperar
 // al siguiente ciclo de sondeo (por si el navegador pausó el setInterval en segundo plano)
 document.addEventListener('visibilitychange', ()=>{
-  if(document.visibilityState === 'visible' && !isModalOpen && !isInlineEditing) loadAll(false);
+  if(document.visibilityState === 'visible' && !isModalOpen && !isInlineEditing && !isCommitting) loadAll(false);
 });
 window.addEventListener('focus', ()=>{
-  if(!isModalOpen && !isInlineEditing) loadAll(false);
+  if(!isModalOpen && !isInlineEditing && !isCommitting) loadAll(false);
 });
 
 // tick the "actualizado hace Xs" label every second
