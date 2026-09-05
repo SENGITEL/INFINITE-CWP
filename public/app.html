@@ -1507,17 +1507,33 @@ async function saveSites(){
 }
 
 // ---------------------------------------------------------------------------
+// Aplica el cambio de inmediato sobre el arreglo local (sin guardar todavía). Se usa
+// cuando el código que llama necesita hacer algo más —como cambiar de pestaña con
+// switchTab()— ANTES de que se dibuje la tabla, para que ese primer dibujado ya
+// incluya el cambio. Si no se hiciera así, ese primer render se pintaría con los
+// datos viejos (el registro nuevo aún no existiría, o el editado seguiría con los
+// datos de antes), y recién con el render de commitRecordsChange() se vería el
+// cambio real — dando la sensación de que el registro "desaparece y luego aparece".
+function applyRecordsLocally(mutate){
+  mutate(records);
+}
+
 // Guardado "al estilo Excel": el cambio se aplica y se ve en pantalla de inmediato
 // (mutate() sobre el arreglo local), y solo DESPUÉS, por debajo y sin bloquear nada,
 // se relee lo último que haya en el servidor, se reaplica ahí mismo el mismo cambio
 // (por si otro gestor guardó algo distinto mientras tanto) y se guarda ese resultado.
 // Mientras dura esa reconciliación, isCommitting evita que el sondeo de fondo
 // sobreescriba con la versión vieja el cambio que la persona ya está viendo.
-async function commitRecordsChange(mutate){
+// Si quien llama ya aplicó el cambio con applyRecordsLocally() (por ejemplo, justo
+// antes de un switchTab()), pasa { alreadyApplied: true } para no repetirlo ni
+// disparar un segundo render de inmediato.
+async function commitRecordsChange(mutate, { alreadyApplied } = {}){
   isCommitting = true;
   try{
-    mutate(records);
-    render();
+    if(!alreadyApplied){
+      mutate(records);
+      render();
+    }
     try{
       const res = await window.storage.get(STORAGE_KEY, true);
       if(res && res.value){
@@ -3831,12 +3847,17 @@ function openModal(id, readOnly){
       });
 
       closeModal();
-      switchTab(gestor === 'HUAWEI' ? 'HUAWEI' : 'ERICSSON');
-      showToast(`${totalCreated} registro${totalCreated===1?'':'s'} creado${totalCreated===1?'':'s'}`);
-      // se ve de inmediato; la reconciliación con el servidor pasa por debajo, sin bloquear
-      commitRecordsChange(list => {
+      // se aplica antes de cambiar de pestaña, para que el primer dibujado ya
+      // incluya los registros nuevos (evita el "aparece y desaparece")
+      applyRecordsLocally(list => {
         newRecs.forEach(nr => { if(!list.some(x=>x.id===nr.id)) list.push(nr); });
       });
+      switchTab(gestor === 'HUAWEI' ? 'HUAWEI' : 'ERICSSON');
+      showToast(`${totalCreated} registro${totalCreated===1?'':'s'} creado${totalCreated===1?'':'s'}`);
+      // la reconciliación con el servidor pasa por debajo, sin bloquear
+      commitRecordsChange(list => {
+        newRecs.forEach(nr => { if(!list.some(x=>x.id===nr.id)) list.push(nr); });
+      }, { alreadyApplied: true });
       return;
     }
 
@@ -3893,15 +3914,21 @@ function openModal(id, readOnly){
       seguimientoSolicitadoCount: seguimientoSolicitadoCount,
       createdAt: r.createdAt || Date.now()
     };
-    // se aplica y se ve de inmediato; la relectura/reconciliación con el servidor
-    // (para no pisar cambios de otro gestor) pasa por debajo, sin bloquear la pantalla
-    closeModal();
-    switchTab(openedFromTab === 'ELECTRICO' ? 'ELECTRICO' : (updated.estado === 'CERRADO' ? 'CERRADOS' : ((updated.estado === 'INGRESO' || updated.estado === 'SALIDA') ? 'INGRESOS' : (gestor === 'HUAWEI' ? 'HUAWEI' : 'ERICSSON'))));
-    showToast(editingId ? 'Cambios guardados' : 'Registro creado');
-    commitRecordsChange(list => {
+    // se aplica antes de cambiar de pestaña, para que el primer dibujado ya
+    // muestre el registro correcto (evita el "desaparece y luego aparece")
+    applyRecordsLocally(list => {
       const idx = list.findIndex(x=>x.id === updated.id);
       if(idx >= 0) list[idx] = updated; else list.push(updated);
     });
+    closeModal();
+    switchTab(openedFromTab === 'ELECTRICO' ? 'ELECTRICO' : (updated.estado === 'CERRADO' ? 'CERRADOS' : ((updated.estado === 'INGRESO' || updated.estado === 'SALIDA') ? 'INGRESOS' : (gestor === 'HUAWEI' ? 'HUAWEI' : 'ERICSSON'))));
+    showToast(editingId ? 'Cambios guardados' : 'Registro creado');
+    // la relectura/reconciliación con el servidor (para no pisar cambios de otro
+    // gestor) pasa por debajo, sin bloquear la pantalla
+    commitRecordsChange(list => {
+      const idx = list.findIndex(x=>x.id === updated.id);
+      if(idx >= 0) list[idx] = updated; else list.push(updated);
+    }, { alreadyApplied: true });
   };
 }
 
