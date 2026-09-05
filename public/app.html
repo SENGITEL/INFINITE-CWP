@@ -1255,7 +1255,7 @@ let records = [];
 let sites = [];
 let activeTab = "ERICSSON"; // ERICSSON | HUAWEI | SITES
 let activeFilters = new Set();
-let ingresosSubFilter = null; // null (todos) | 'INGRESOS' (sin salida) | 'SALIDAS' (con salida registrada)
+let ingresosSubFilter = 'INGRESOS'; // 'INGRESOS' (por defecto: solo entradas sin salida registrada) | 'SALIDAS' (solo con salida registrada)
 let editingId = null;
 let editingSiteId = null;
 let isModalOpen = false;
@@ -1637,12 +1637,15 @@ function buildFilterChips(){
   if(activeTab === 'CERRADOS') return; // en Cerrados no aplican los chips de estado (todos comparten el mismo estado)
   const searchEl = document.getElementById('searchInput');
   if(activeTab === 'INGRESOS'){
+    // Los chips "Ingresos"/"Salidas" son mutuamente excluyentes: siempre hay exactamente
+    // uno activo (nunca los dos a la vez, nunca ninguno) para que no exista un estado
+    // intermedio de "todos mezclados" que haga sentir el filtro invertido o inconsistente.
     [{key:'INGRESOS', label:'Ingresos'}, {key:'SALIDAS', label:'Salidas'}].forEach(o=>{
       const chip = document.createElement('div');
       chip.className = 'chip' + (ingresosSubFilter === o.key ? ' active' : '');
       chip.textContent = o.label;
       chip.onclick = ()=>{
-        ingresosSubFilter = ingresosSubFilter === o.key ? null : o.key;
+        ingresosSubFilter = o.key;
         buildFilterChips();
         render();
       };
@@ -1827,6 +1830,74 @@ function restoreScrollState(state){
 }
 const prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+// ---------------------------------------------------------------------------
+// Redibujado por diferencias: en vez de que cada render() destruya TODAS las
+// filas de una tabla y las vuelva a crear desde cero (lo que reconstruye
+// hasta las filas que no cambiaron en absoluto), reconcileTbody() compara
+// fila por fila, por su clave (Id de registro, de grupo masivo o de sitio), y
+// solo toca en el DOM las filas que de verdad cambiaron o son nuevas. Las
+// filas sin cambios se dejan exactamente como están: mismo nodo, mismo
+// scroll interno, mismo hover, mismos listeners ya enganchados. Esto es lo
+// que hace que, al llegar un cambio de otro gestor, ya no se sienta como si
+// "recargara" la tabla entera, sino que solo se actualice lo que de verdad
+// cambió — igual que en una hoja de Excel, donde solo se repinta la celda
+// que cambió.
+//
+// Es seguro reutilizar así los nodos viejos porque todos los listeners de
+// las filas (editar, cerrar, escalar, copiar, registrar salida, etc.) solo
+// usan el Id fijo de la fila (que nunca cambia mientras el registro exista)
+// para buscar el dato más reciente en el arreglo global `records`/`sites` en
+// el momento del clic — nunca dependen de una "foto" vieja tomada en el
+// momento en que se dibujó la fila. Por eso un listener enganchado hace
+// varios render() sigue siendo válido.
+function reconcileTbody(tbody, html, keyOf){
+  const shadow = document.createElement('tbody');
+  shadow.innerHTML = html;
+  const newRows = Array.from(shadow.children);
+  const oldByKey = new Map();
+  Array.from(tbody.children).forEach(el=>{
+    const k = keyOf(el);
+    if(k) oldByKey.set(k, el);
+  });
+  const touched = [];
+  const finalNodes = newRows.map(newEl=>{
+    const k = keyOf(newEl);
+    const oldEl = k ? oldByKey.get(k) : null;
+    if(oldEl){
+      oldByKey.delete(k);
+      if(oldEl.outerHTML === newEl.outerHTML){
+        return oldEl; // idéntica: se conserva el nodo tal cual, no se toca
+      }
+    }
+    touched.push(newEl); // nueva o cambiada: esta sí hay que engancharle listeners
+    return newEl;
+  });
+  tbody.replaceChildren(...finalNodes); // mover nodos existentes no los destruye ni les quita sus listeners
+  return touched;
+}
+// Igual que tbody.querySelectorAll(selector).forEach(...), pero acotado solo a las
+// filas realmente tocadas (nuevas/cambiadas) en vez de a toda la tabla — así no se
+// vuelven a enganchar listeners duplicados sobre filas que ya los tenían de antes.
+function queryAllIn(rootEls, selector){
+  const out = [];
+  rootEls.forEach(root=>{
+    if(root.matches && root.matches(selector)) out.push(root);
+    if(root.querySelectorAll) root.querySelectorAll(selector).forEach(el=>out.push(el));
+  });
+  return out;
+}
+// Clave de reconciliación por defecto: usa data-id (registros) o, si no hay,
+// data-group (filas de grupo/colapso masivo), o data-siteid (base de sitios).
+function defaultRowKey(el){
+  const id = el.getAttribute && el.getAttribute('data-id');
+  if(id) return 'id:' + id;
+  const grp = el.getAttribute && el.getAttribute('data-group');
+  if(grp) return 'grp:' + grp;
+  const siteId = el.getAttribute && el.getAttribute('data-siteid');
+  if(siteId) return 'site:' + siteId;
+  return null;
+}
+
 function render(){
   const scrollState = captureScrollState();
   // si había un menú flotante (escalar / estado eléctrico) abierto, se cierra antes de
@@ -1846,7 +1917,7 @@ function renderInner(){
   updateKpis();
   const ericssonCount = records.filter(r => (r.gestor||'ERICSSON') === 'ERICSSON' && r.estado !== 'CERRADO' && r.estado !== 'INGRESO' && r.estado !== 'SALIDA').length;
   const huaweiCount = records.filter(r => r.gestor === 'HUAWEI' && r.estado !== 'CERRADO' && r.estado !== 'INGRESO' && r.estado !== 'SALIDA').length;
-  const ingresosCount = records.filter(r => r.estado === 'INGRESO' || r.estado === 'SALIDA').length;
+  const ingresosCount = records.filter(r => r.estado === 'INGRESO').length;
   const cerradosCount = records.filter(r => r.estado === 'CERRADO').length;
   const electricoCount = records.filter(r => r.reporteElectrico).length;
   const avisosPendientesCount = records.filter(r => r.seguimientoSolicitado && !r.seguimientoSolicitadoAtendido).length;
@@ -1877,9 +1948,11 @@ function renderInner(){
   if(isCerradosTab){
     list = records.filter(r => r.estado === 'CERRADO');
   } else if(isIngresosTab){
-    list = records.filter(r => r.estado === 'INGRESO' || r.estado === 'SALIDA');
-    if(ingresosSubFilter === 'INGRESOS') list = list.filter(r => r.estado === 'INGRESO');
-    else if(ingresosSubFilter === 'SALIDAS') list = list.filter(r => r.estado === 'SALIDA');
+    // por defecto (y con el chip "Ingresos") solo entradas sin salida registrada;
+    // con el chip "Salidas" solo las que ya tienen salida — nunca mezclados
+    list = ingresosSubFilter === 'SALIDAS'
+      ? records.filter(r => r.estado === 'SALIDA')
+      : records.filter(r => r.estado === 'INGRESO');
   } else {
     list = records.filter(r => (r.gestor||'ERICSSON') === gestor && r.estado !== 'CERRADO' && r.estado !== 'INGRESO' && r.estado !== 'SALIDA');
   }
@@ -2171,9 +2244,9 @@ function renderInner(){
     }
     rowsHtml.push(buildRowHtml(r));
   });
-  tbody.innerHTML = rowsHtml.join('');
+  const touchedRows = reconcileTbody(tbody, rowsHtml.join(''), defaultRowKey);
 
-  tbody.querySelectorAll('tr').forEach(tr=>{
+  queryAllIn(touchedRows, 'tr').forEach(tr=>{
     tr.addEventListener('click', (e)=>{
       // el clic en la fila ya NO abre el modal, así el agente puede seleccionar y copiar texto
       // (Ubicación, Reporte Eléctrico, Teams, etc.) sin que se le abra el formulario por accidente.
@@ -2185,13 +2258,13 @@ function renderInner(){
       if(id) openModal(id);
     });
   });
-  tbody.querySelectorAll('[data-edit]').forEach(btn=>{
+  queryAllIn(touchedRows, '[data-edit]').forEach(btn=>{
     btn.addEventListener('click', (e)=>{
       e.stopPropagation();
       openModal(btn.dataset.edit);
     });
   });
-  tbody.querySelectorAll('[data-copy]').forEach(btn=>{
+  queryAllIn(touchedRows, '[data-copy]').forEach(btn=>{
     btn.addEventListener('click', async (e)=>{
       e.stopPropagation();
       const text = btn.dataset.copy;
@@ -2203,7 +2276,7 @@ function renderInner(){
       }
     });
   });
-  tbody.querySelectorAll('[data-del]').forEach(btn=>{
+  queryAllIn(touchedRows, '[data-del]').forEach(btn=>{
     btn.addEventListener('click', async (e)=>{
       e.stopPropagation();
       const id = btn.dataset.del;
@@ -2214,7 +2287,7 @@ function renderInner(){
       showToast('Registro eliminado');
     });
   });
-  tbody.querySelectorAll('[data-close]').forEach(btn=>{
+  queryAllIn(touchedRows, '[data-close]').forEach(btn=>{
     btn.addEventListener('click', async (e)=>{
       e.stopPropagation();
       const id = btn.dataset.close;
@@ -2227,7 +2300,7 @@ function renderInner(){
       showToast('Registro cerrado');
     });
   });
-  tbody.querySelectorAll('[data-pending]').forEach(btn=>{
+  queryAllIn(touchedRows, '[data-pending]').forEach(btn=>{
     btn.addEventListener('click', async (e)=>{
       e.stopPropagation();
       const id = btn.dataset.pending;
@@ -2239,13 +2312,13 @@ function renderInner(){
       showToast('Registro marcado como pendiente de cierre');
     });
   });
-  tbody.querySelectorAll('[data-escalate]').forEach(btn=>{
+  queryAllIn(touchedRows, '[data-escalate]').forEach(btn=>{
     btn.addEventListener('click', (e)=>{
       e.stopPropagation();
       showEscalateMenu(btn, btn.dataset.escalate);
     });
   });
-  tbody.querySelectorAll('[data-reopen]').forEach(btn=>{
+  queryAllIn(touchedRows, '[data-reopen]').forEach(btn=>{
     btn.addEventListener('click', async (e)=>{
       e.stopPropagation();
       const id = btn.dataset.reopen;
@@ -2258,7 +2331,7 @@ function renderInner(){
       showToast('Registro reabierto');
     });
   });
-  tbody.querySelectorAll('[data-salida]').forEach(btn=>{
+  queryAllIn(touchedRows, '[data-salida]').forEach(btn=>{
     btn.addEventListener('click', async (e)=>{
       e.stopPropagation();
       const id = btn.dataset.salida;
@@ -2273,13 +2346,13 @@ function renderInner(){
       showToast('Salida registrada');
     });
   });
-  tbody.querySelectorAll('[data-id-menu]').forEach(cell=>{
+  queryAllIn(touchedRows, '[data-id-menu]').forEach(cell=>{
     cell.addEventListener('click', (e)=>{
       e.stopPropagation();
       showIdStatusMenu(cell, cell.dataset.idMenu);
     });
   });
-  tbody.querySelectorAll('[data-toggle-group]').forEach(btn=>{
+  queryAllIn(touchedRows, '[data-toggle-group]').forEach(btn=>{
     btn.addEventListener('click', (e)=>{
       e.stopPropagation();
       const gkey = btn.dataset.toggleGroup;
@@ -2288,7 +2361,7 @@ function renderInner(){
       render();
     });
   });
-  tbody.querySelectorAll('[data-del-group]').forEach(btn=>{
+  queryAllIn(touchedRows, '[data-del-group]').forEach(btn=>{
     btn.addEventListener('click', async (e)=>{
       e.stopPropagation();
       const gkey = btn.dataset.delGroup;
@@ -2302,7 +2375,7 @@ function renderInner(){
       showToast('Grupo masivo eliminado');
     });
   });
-  tbody.querySelectorAll('[data-close-tk]').forEach(btn=>{
+  queryAllIn(touchedRows, '[data-close-tk]').forEach(btn=>{
     btn.addEventListener('click', async (e)=>{
       e.stopPropagation();
       const id = btn.dataset.closeTk;
@@ -2318,7 +2391,7 @@ function renderInner(){
       showToast(`${pendientes.length} registro(s) cerrado(s) por TK compartido`);
     });
   });
-  tbody.querySelectorAll('[data-close-tk-group]').forEach(btn=>{
+  queryAllIn(touchedRows, '[data-close-tk-group]').forEach(btn=>{
     btn.addEventListener('click', async (e)=>{
       e.stopPropagation();
       const gkey = btn.dataset.closeTkGroup;
@@ -2339,7 +2412,7 @@ function renderInner(){
       showToast(`${pendientes.length} registro(s) cerrado(s) por TK compartido`);
     });
   });
-  tbody.querySelectorAll('[data-pending-group]').forEach(btn=>{
+  queryAllIn(touchedRows, '[data-pending-group]').forEach(btn=>{
     btn.addEventListener('click', async (e)=>{
       e.stopPropagation();
       const gkey = btn.dataset.pendingGroup;
@@ -2407,7 +2480,7 @@ function renderElectrico(){
   const sharedOts1ColorsElectrico = computeSharedTicketColors(list, 'otsSev1');
   const sharedOts2ColorsElectrico = computeSharedTicketColors(list, 'otsSev2');
 
-  tbody.innerHTML = list.map(r => {
+  const electricoRowsHtml = list.map(r => {
     const cls = ESTADO_CLASS[r.estado] || 'CERRADO';
     const gestorLabel = r.gestor === 'HUAWEI' ? 'Huawei' : 'Ericsson';
     const proveedor = r.reporteElectricoProveedor || '';
@@ -2492,8 +2565,9 @@ function renderElectrico(){
       </tr>
     `;
   }).join('');
+  const touchedRows = reconcileTbody(tbody, electricoRowsHtml, defaultRowKey);
 
-  tbody.querySelectorAll('tr').forEach(tr=>{
+  queryAllIn(touchedRows, 'tr').forEach(tr=>{
     tr.addEventListener('click', (e)=>{
       // el clic en la fila ya NO abre el registro, así el agente puede seleccionar y copiar texto libremente.
       // Usa el botón 👁 o doble clic para ver el registro completo.
@@ -2504,13 +2578,13 @@ function renderElectrico(){
       if(id) openModal(id, true);
     });
   });
-  tbody.querySelectorAll('[data-viewcase]').forEach(btn=>{
+  queryAllIn(touchedRows, '[data-viewcase]').forEach(btn=>{
     btn.addEventListener('click', (e)=>{
       e.stopPropagation();
       openModal(btn.dataset.viewcase, true);
     });
   });
-  tbody.querySelectorAll('[data-copy]').forEach(btn=>{
+  queryAllIn(touchedRows, '[data-copy]').forEach(btn=>{
     btn.addEventListener('click', async (e)=>{
       e.stopPropagation();
       const text = btn.dataset.copy;
@@ -2522,7 +2596,7 @@ function renderElectrico(){
       }
     });
   });
-  tbody.querySelectorAll('[data-ubictoggle]').forEach(btn=>{
+  queryAllIn(touchedRows, '[data-ubictoggle]').forEach(btn=>{
     btn.addEventListener('click', (e)=>{
       e.stopPropagation();
       const id = btn.dataset.ubictoggle;
@@ -2530,7 +2604,7 @@ function renderElectrico(){
       render();
     });
   });
-  tbody.querySelectorAll('[data-toggleaviso]').forEach(cb=>{
+  queryAllIn(touchedRows, '[data-toggleaviso]').forEach(cb=>{
     cb.addEventListener('change', async (e)=>{
       const id = cb.dataset.toggleaviso;
       const rec = records.find(x=>x.id === id);
@@ -2542,7 +2616,7 @@ function renderElectrico(){
       }
     });
   });
-  tbody.querySelectorAll('[data-toggleenviado]').forEach(cb=>{
+  queryAllIn(touchedRows, '[data-toggleenviado]').forEach(cb=>{
     cb.addEventListener('change', async (e)=>{
       const id = cb.dataset.toggleenviado;
       await touchSeguimiento(id, rec => { rec.reporteElectricoEnviado = cb.checked; });
@@ -2554,7 +2628,7 @@ function renderElectrico(){
     el.addEventListener('focus', ()=>{ isInlineEditing = true; });
     el.addEventListener('blur', ()=>{ isInlineEditing = false; });
   }
-  tbody.querySelectorAll('[data-seguimientotexto]').forEach(input=>{
+  queryAllIn(touchedRows, '[data-seguimientotexto]').forEach(input=>{
     trackInlineEditing(input);
     input.addEventListener('change', async (e)=>{
       const id = input.dataset.seguimientotexto;
@@ -2563,7 +2637,7 @@ function renderElectrico(){
       showToast('Seguimiento guardado');
     });
   });
-  tbody.querySelectorAll('[data-reportetexto]').forEach(input=>{
+  queryAllIn(touchedRows, '[data-reportetexto]').forEach(input=>{
     trackInlineEditing(input);
     input.addEventListener('change', async (e)=>{
       const id = input.dataset.reportetexto;
@@ -2572,7 +2646,7 @@ function renderElectrico(){
       showToast('Reporte eléctrico guardado');
     });
   });
-  tbody.querySelectorAll('[data-proveedor]').forEach(sel=>{
+  queryAllIn(touchedRows, '[data-proveedor]').forEach(sel=>{
     trackInlineEditing(sel);
     sel.addEventListener('change', async (e)=>{
       const id = sel.dataset.proveedor;
@@ -2581,7 +2655,7 @@ function renderElectrico(){
       showToast('Proveedor actualizado');
     });
   });
-  tbody.querySelectorAll('[data-estadoreporte]').forEach(sel=>{
+  queryAllIn(touchedRows, '[data-estadoreporte]').forEach(sel=>{
     trackInlineEditing(sel);
     sel.addEventListener('change', async (e)=>{
       const id = sel.dataset.estadoreporte;
@@ -2590,7 +2664,7 @@ function renderElectrico(){
       showToast('Estado de reporte actualizado');
     });
   });
-  tbody.querySelectorAll('[data-unflag]').forEach(btn=>{
+  queryAllIn(touchedRows, '[data-unflag]').forEach(btn=>{
     btn.addEventListener('click', async (e)=>{
       e.stopPropagation();
       const id = btn.dataset.unflag;
@@ -2622,7 +2696,7 @@ function renderSites(){
 
   document.getElementById('sitesEmptyState').style.display = list.length === 0 ? 'block' : 'none';
 
-  tbody.innerHTML = list.map(s => `
+  const sitesRowsHtml = list.map(s => `
     <tr data-siteid="${escapeHtml(s.id)}">
       <td class="mono" style="color:var(--text); font-weight:600;">${dashHl(s.siteId, siteSearchTerm)}</td>
       <td>${dashHl(s.siteName, siteSearchTerm)}</td>
@@ -2643,14 +2717,15 @@ function renderSites(){
       <td><button class="del-btn" data-delsite="${escapeHtml(s.id)}" title="Eliminar">✕</button></td>
     </tr>
   `).join('');
+  const touchedRows = reconcileTbody(tbody, sitesRowsHtml, defaultRowKey);
 
-  tbody.querySelectorAll('tr').forEach(tr=>{
+  queryAllIn(touchedRows, 'tr').forEach(tr=>{
     tr.addEventListener('click', (e)=>{
       if(e.target.closest('[data-delsite]')) return;
       requireAdminPin('editar un sitio existente', ()=> openSiteModal(tr.dataset.siteid));
     });
   });
-  tbody.querySelectorAll('[data-delsite]').forEach(btn=>{
+  queryAllIn(touchedRows, '[data-delsite]').forEach(btn=>{
     btn.addEventListener('click', (e)=>{
       e.stopPropagation();
       const id = btn.dataset.delsite;
