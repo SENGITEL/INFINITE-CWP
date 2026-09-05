@@ -260,6 +260,8 @@
   .tab.active[data-tab="ERICSSON"] .count{ background:rgba(0,0,0,0.15); color:#2b2200; }
   .tab.active[data-tab="HUAWEI"]{ background:var(--huawei); color:#2b0704; border-color:var(--huawei); box-shadow:0 -2px 12px -4px rgba(255,79,69,0.5); }
   .tab.active[data-tab="HUAWEI"] .count{ background:rgba(0,0,0,0.2); color:#2b0704; }
+  .tab.active[data-tab="INGRESOS"]{ background:var(--blue); color:#001426; border-color:var(--blue); box-shadow:0 -2px 12px -4px rgba(79,182,255,0.5); }
+  .tab.active[data-tab="INGRESOS"] .count{ background:rgba(0,0,0,0.2); color:#001426; }
   .tab.active[data-tab="CERRADOS"]{ background:#c9d3e3; color:#06110f; border-color:#c9d3e3; box-shadow:0 -2px 12px -4px rgba(201,211,227,0.5); }
   .tab.active[data-tab="CERRADOS"] .count{ background:rgba(0,0,0,0.15); color:#06110f; }
   .tab.active[data-tab="ELECTRICO"]{ background:var(--warn); color:#332600; border-color:var(--warn); box-shadow:0 -2px 12px -4px rgba(255,201,61,0.5); }
@@ -326,6 +328,20 @@
   thead th .sort-ind{ display:inline-block; margin-left:4px; opacity:0.35; font-size:9px; }
   thead th.sortable.sort-active{ color:var(--accent); }
   thead th.sortable.sort-active .sort-ind{ opacity:1; }
+
+  /* handle para ajustar el ancho de las columnas arrastrando el borde derecho */
+  table.col-resizable{ table-layout:fixed; }
+  thead th .col-resizer{
+    position:absolute; top:0; right:0; bottom:0; width:8px;
+    cursor:col-resize; z-index:6; touch-action:none;
+  }
+  thead th .col-resizer::after{
+    content:''; position:absolute; top:0; bottom:0; right:3px; width:2px;
+    background:transparent; transition:background .12s ease;
+  }
+  thead th .col-resizer:hover::after,
+  thead th .col-resizer.resizing::after{ background:var(--accent); }
+  thead th{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   mark.search-hit{
     background:var(--accent); color:#04140f; border-radius:3px; padding:0 2px;
     font-weight:700; box-decoration-break:clone; -webkit-box-decoration-break:clone;
@@ -361,6 +377,7 @@
     border:1px solid transparent;
   }
   .badge-INGRESO{ background:var(--blue-bg); color:var(--blue); border-color:rgba(79,182,255,0.25); }
+  .badge-SALIDA{ background:var(--seguimiento-bg); color:var(--seguimiento); border-color:rgba(93,255,176,0.3); }
   .badge-CERRADO{ background:var(--grey-bg); color:#c9d3e3; }
   .badge-TP{ background:var(--violet-bg); color:var(--violet); border-color:rgba(179,155,255,0.25); }
   .badge-GESTION{ background:var(--danger-bg); color:var(--danger); border-color:rgba(255,77,109,0.3); box-shadow:0 0 10px -3px var(--danger-glow); }
@@ -395,6 +412,46 @@
   .ticket-shared-6{ background:rgba(88,222,222,0.14); color:#58dede; border-color:rgba(88,222,222,0.35); }
   .ticket-shared-7{ background:rgba(216,216,120,0.14); color:#d8d878; border-color:rgba(216,216,120,0.35); }
   tr[data-ticket-group]{ box-shadow: inset 3px 0 0 0 var(--ticket-group-color, transparent); }
+  /* Celdas de TK (OTS Sev3/Sev4, TP Change): clic para copiar el número al portapapeles. */
+  .tk-copy{ cursor:pointer; border-radius:4px; transition:background .12s, box-shadow .12s; }
+  .tk-copy:not(.ticket-shared):hover{ background:rgba(255,255,255,0.08); box-shadow:0 0 0 1px rgba(255,255,255,0.15); }
+  .tk-copy.ticket-shared:hover{ filter:brightness(1.25); }
+  .tk-copy:active{ transform:scale(0.96); }
+  /* Oculta la columna "Gestor" en las pestañas Ericsson/Huawei (ahí el gestor ya es obvio
+     por la pestaña activa); en Cerrados sigue visible porque mezcla ambos gestores. */
+  body.hide-gestor-col #casesView table th:nth-child(2),
+  body.hide-gestor-col #casesView table td:nth-child(2){ display:none; }
+  /* En la pestaña Ingresos se ocultan las columnas de gestión de fallas (no aplican a
+     un registro de ingreso) y en su lugar se muestra la columna "Actividad". En el resto
+     de pestañas es al revés: se ocultan estas columnas y se muestra "Actividad" solo aquí. */
+  body.hide-ingresos-extra-cols #casesView table th:nth-child(3),
+  body.hide-ingresos-extra-cols #casesView table td:nth-child(3),
+  body.hide-ingresos-extra-cols #casesView table th:nth-child(5),
+  body.hide-ingresos-extra-cols #casesView table td:nth-child(5),
+  body.hide-ingresos-extra-cols #casesView table th:nth-child(9),
+  body.hide-ingresos-extra-cols #casesView table td:nth-child(9),
+  body.hide-ingresos-extra-cols #casesView table th:nth-child(10),
+  body.hide-ingresos-extra-cols #casesView table td:nth-child(10),
+  body.hide-ingresos-extra-cols #casesView table th:nth-child(12),
+  body.hide-ingresos-extra-cols #casesView table td:nth-child(12),
+  body.hide-ingresos-extra-cols #casesView table th:nth-child(13),
+  body.hide-ingresos-extra-cols #casesView table td:nth-child(13),
+  body.hide-ingresos-extra-cols #casesView table th:nth-child(14),
+  body.hide-ingresos-extra-cols #casesView table td:nth-child(14),
+  body.hide-ingresos-extra-cols #casesView table th:nth-child(15),
+  body.hide-ingresos-extra-cols #casesView table td:nth-child(15),
+  body.hide-ingresos-extra-cols #casesView table th:nth-child(16),
+  body.hide-ingresos-extra-cols #casesView table td:nth-child(16),
+  body.hide-ingresos-extra-cols #casesView table th:nth-child(17),
+  body.hide-ingresos-extra-cols #casesView table td:nth-child(17){ display:none; }
+  #casesView table th:nth-child(19),
+  #casesView table td:nth-child(19){ display:none; }
+  #casesView table th:nth-child(20),
+  #casesView table td:nth-child(20){ display:none; }
+  body.hide-ingresos-extra-cols #casesView table th:nth-child(19),
+  body.hide-ingresos-extra-cols #casesView table td:nth-child(19){ display:table-cell; }
+  body.hide-ingresos-extra-cols #casesView table th:nth-child(20),
+  body.hide-ingresos-extra-cols #casesView table td:nth-child(20){ display:table-cell; }
   .electrico-check{ display:flex; align-items:center; gap:9px; cursor:pointer; user-select:none; }
   .aviso-count-badge{
     display:inline-flex; align-items:center; justify-content:center; min-width:20px; height:20px;
@@ -484,6 +541,8 @@
   .action-close:hover{ color:#22c55e; background:rgba(34,197,94,.15); border-color:rgba(34,197,94,.35); }
   .action-escalate:hover{ color:var(--escip); background:var(--escip-bg); border-color:rgba(255,159,67,0.35); }
   .action-pending:hover{ color:var(--warn); background:var(--warn-bg); border-color:rgba(255,201,61,0.35); }
+  .action-reopen:hover{ color:var(--blue); background:var(--blue-bg); border-color:rgba(79,182,255,0.35); }
+  .action-salida:hover{ color:var(--violet); background:var(--violet-bg); border-color:rgba(178,143,255,0.35); }
   .escalate-menu{
     position:fixed; z-index:500; background:var(--panel); border:1px solid var(--line);
     border-radius:8px; padding:4px; box-shadow:0 8px 24px rgba(0,0,0,.35);
@@ -550,6 +609,7 @@
   .site-name-hint.found{ background:var(--accent-dim); color:#eafffb; }
   .site-name-hint.missing{ background:var(--warn-bg); color:var(--warn); }
   .site-name-hint.alert{ background:var(--danger); color:#2b0509; font-weight:700; border:1px solid var(--danger); }
+  .site-name-hint.ingreso-alert{ background:var(--blue-bg); color:var(--blue); font-weight:700; border:1px solid rgba(79,182,255,0.4); margin-top:6px; }
   body.theme-light .site-name-hint.found{ color:#0e5a52; }
 
   /* modal */
@@ -856,6 +916,7 @@
   <div class="tabs" id="tabsBar">
     <button class="tab" data-tab="ERICSSON">Ericsson <span class="count" id="countEricsson">0</span></button>
     <button class="tab" data-tab="HUAWEI">Huawei <span class="count" id="countHuawei">0</span></button>
+    <button class="tab" data-tab="INGRESOS">Ingresos <span class="count" id="countIngresos">0</span></button>
     <button class="tab" data-tab="CERRADOS">Cerrados <span class="count" id="countCerrados">0</span></button>
     <button class="tab" data-tab="ELECTRICO">Reportes Eléctricos <span class="count" id="countElectrico">0</span><span id="tabAvisoDot" style="display:none; width:8px; height:8px; border-radius:50%; background:var(--danger); margin-left:2px; animation: aviso-pulse 1.6s infinite;"></span></button>
     <button class="tab" data-tab="SITES">Site ID – Name <span class="count" id="countSites">0</span></button>
@@ -869,7 +930,7 @@
         <input class="search" id="searchInput" placeholder="Buscar por Service ID, OTS, observación, proceso…" />
       </div>
       <div class="table-scroll">
-        <table>
+        <table id="casesTable">
           <thead>
             <tr>
               <th class="sortable" data-sort="estado">Estado<span class="sort-ind"></span></th>
@@ -890,6 +951,8 @@
               <th>Proveedor</th>
               <th>Seguimiento Reporte Eléctrico</th>
               <th>Teams</th>
+              <th>Actividad</th>
+              <th>Salida</th>
             </tr>
           </thead>
           <tbody id="tbody"></tbody>
@@ -907,7 +970,7 @@
         <button class="btn-ghost" id="electricoExportBtn" style="margin-left:auto;">⬇ Exportar Excel</button>
       </div>
       <div class="table-scroll">
-        <table>
+        <table id="electricoTable">
           <thead>
             <tr>
               <th>Aviso</th>
@@ -951,7 +1014,7 @@
       </div>
       <p class="hint" style="margin:-4px 0 10px; font-size:11px;">🔒 Importar Excel, editar y eliminar sitios existentes requieren código de administrador. Cualquier gestor puede agregar sitios nuevos con "+ Agregar sitio".</p>
       <div class="table-scroll">
-        <table class="sites-table">
+        <table class="sites-table" id="sitesTable">
           <thead>
             <tr>
               <th>Id</th>
@@ -1023,7 +1086,7 @@ window.storage = {
     return { key, value, shared:true };
   }
 };
-const ESTADOS = ["INGRESO","CERRADO","TP (CHANGE)","EN GESTION","PENDIENTE POR CIERRE","ESCALADO A IP","ESCALADO A DWDM","SEGUIMIENTO"];
+const ESTADOS = ["INGRESO","SALIDA","CERRADO","TP (CHANGE)","EN GESTION","PENDIENTE POR CIERRE","ESCALADO A IP","ESCALADO A DWDM","SEGUIMIENTO"];
 const PROVEEDOR_LABELS = { "ENSA":"Ensa", "NATURGY":"Naturgy" };
 
 // Deduce el proveedor de energía a partir del NIS del sitio asociado al registro:
@@ -1068,7 +1131,9 @@ const PROCESO_OPTIONS = [
   "Falla de sectores 2G",
   "Contratista",
   "Tema Legal",
-  "En Monitoreo"
+  "En Monitoreo",
+  "Con afectación",
+  "Sin afectación"
 ];
 // Procesos que deben resaltarse en rojo en la tabla por ser de mayor criticidad.
 const PROCESO_CRITICOS = [
@@ -1106,11 +1171,15 @@ function ticketCellHtml(value, colorMap, searchTerm){
   const v = (value||'').trim();
   if(!v) return dashHl(value, searchTerm);
   const colorIdx = colorMap.get(v);
-  if(colorIdx === undefined) return dashHl(value, searchTerm);
-  return `<span class="ticket-shared ticket-shared-${colorIdx}" title="Ticket compartido con otros sitios">${highlightText(value, searchTerm)}</span>`;
+  const copyData = `data-copy="${escapeHtml(v)}"`;
+  if(colorIdx === undefined){
+    return `<span class="tk-copy" ${copyData} title="Clic para copiar">${highlightText(value, searchTerm)}</span>`;
+  }
+  return `<span class="ticket-shared ticket-shared-${colorIdx} tk-copy" ${copyData} title="Ticket compartido con otros sitios · Clic para copiar">${highlightText(value, searchTerm)}</span>`;
 }
 const ESTADO_CLASS = {
   "INGRESO":"INGRESO",
+  "SALIDA":"SALIDA",
   "CERRADO":"CERRADO",
   "TP (CHANGE)":"TP",
   "EN GESTION":"GESTION",
@@ -1123,6 +1192,7 @@ const ESTADO_CLASS = {
 // aunque no se perciban los colores (daltonismo, capturas en blanco y negro, etc.)
 const ESTADO_ICON = {
   "INGRESO":"＋",
+  "SALIDA":"→",
   "CERRADO":"✓",
   "TP":"↻",
   "GESTION":"⚠",
@@ -1185,6 +1255,7 @@ let records = [];
 let sites = [];
 let activeTab = "ERICSSON"; // ERICSSON | HUAWEI | SITES
 let activeFilters = new Set();
+let ingresosSubFilter = null; // null (todos) | 'INGRESOS' (sin salida) | 'SALIDAS' (con salida registrada)
 let editingId = null;
 let editingSiteId = null;
 let isModalOpen = false;
@@ -1272,6 +1343,8 @@ const ROW_ICONS = {
   escalate: `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="16 12 12 8 8 12"/><line x1="12" y1="16" x2="12" y2="8"/></svg>`,
   trash: `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>`,
   pending: `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,
+  reopen: `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-6.36L1 10"/></svg>`,
+  salida: `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>`,
 };
 let toastTimer = null;
 function showToast(msg, type){
@@ -1352,9 +1425,10 @@ function skeletonRowsHtml(colCount, rows){
 // trae los datos, para que la tabla no se vea en blanco un instante durante la sincronización.
 function showTableSkeleton(){
   const map = {
-    ERICSSON: { tbody:'tbody', empty:'emptyState', cols:18 },
-    HUAWEI:   { tbody:'tbody', empty:'emptyState', cols:18 },
-    CERRADOS: { tbody:'tbody', empty:'emptyState', cols:18 },
+    ERICSSON: { tbody:'tbody', empty:'emptyState', cols:20 },
+    HUAWEI:   { tbody:'tbody', empty:'emptyState', cols:20 },
+    INGRESOS: { tbody:'tbody', empty:'emptyState', cols:20 },
+    CERRADOS: { tbody:'tbody', empty:'emptyState', cols:20 },
     ELECTRICO:{ tbody:'electricoTbody', empty:'electricoEmptyState', cols:22 },
     SITES:    { tbody:'sitesTbody', empty:'sitesEmptyState', cols:17 }
   };
@@ -1506,6 +1580,19 @@ function lookupSiteByName(name){
   return sites.find(s => (s.siteName||'').trim().toLowerCase() === q) || null;
 }
 
+// Busca si existe un registro de INGRESO activo (aún sin salida registrada) para un Service ID,
+// para avisar al agente que ya hay alguien gestionando un ingreso en ese sitio/RBS.
+function findIngresoActivoPorServiceId(serviceId, excludeId){
+  if(!serviceId) return null;
+  const q = serviceId.trim().toLowerCase();
+  if(q === '') return null;
+  return records.find(rec =>
+    rec.estado === 'INGRESO' &&
+    rec.id !== excludeId &&
+    (rec.serviceId||'').trim().toLowerCase() === q
+  ) || null;
+}
+
 function normalizeVip(v){
   const s = String(v||'').trim().toUpperCase();
   if(['SI','SÍ','SI.','S','YES','TRUE','1'].includes(s)) return 'SI';
@@ -1524,11 +1611,13 @@ function switchTab(tab){
   document.querySelectorAll('.tab').forEach(t=>{
     t.classList.toggle('active', t.dataset.tab === tab);
   });
-  document.getElementById('casesView').style.display = (tab === 'ERICSSON' || tab === 'HUAWEI' || tab === 'CERRADOS') ? 'block' : 'none';
+  document.getElementById('casesView').style.display = (tab === 'ERICSSON' || tab === 'HUAWEI' || tab === 'INGRESOS' || tab === 'CERRADOS') ? 'block' : 'none';
   document.getElementById('electricoView').style.display = (tab === 'ELECTRICO') ? 'block' : 'none';
   document.getElementById('sitesView').style.display = (tab === 'SITES') ? 'block' : 'none';
   document.getElementById('newBtn').style.display = (tab === 'ERICSSON' || tab === 'HUAWEI') ? 'inline-block' : 'none';
-  document.getElementById('exportBtn').style.display = (tab === 'ERICSSON' || tab === 'HUAWEI' || tab === 'CERRADOS') ? 'inline-block' : 'none';
+  document.getElementById('exportBtn').style.display = (tab === 'ERICSSON' || tab === 'HUAWEI' || tab === 'INGRESOS' || tab === 'CERRADOS') ? 'inline-block' : 'none';
+  document.body.classList.toggle('hide-gestor-col', tab === 'ERICSSON' || tab === 'HUAWEI');
+  document.body.classList.toggle('hide-ingresos-extra-cols', tab === 'INGRESOS');
   render();
 }
 
@@ -1545,9 +1634,23 @@ function currentGestor(){
 function buildFilterChips(){
   const box = document.getElementById('filters');
   box.querySelectorAll('.chip').forEach(c=>c.remove());
-  if(activeTab === 'CERRADOS') return; // en Cerrados no aplican los chips de estado (todos son CERRADO)
+  if(activeTab === 'CERRADOS') return; // en Cerrados no aplican los chips de estado (todos comparten el mismo estado)
   const searchEl = document.getElementById('searchInput');
-  ESTADOS.filter(est => est !== 'CERRADO').forEach(est=>{
+  if(activeTab === 'INGRESOS'){
+    [{key:'INGRESOS', label:'Ingresos'}, {key:'SALIDAS', label:'Salidas'}].forEach(o=>{
+      const chip = document.createElement('div');
+      chip.className = 'chip' + (ingresosSubFilter === o.key ? ' active' : '');
+      chip.textContent = o.label;
+      chip.onclick = ()=>{
+        ingresosSubFilter = ingresosSubFilter === o.key ? null : o.key;
+        buildFilterChips();
+        render();
+      };
+      box.insertBefore(chip, searchEl);
+    });
+    return;
+  }
+  ESTADOS.filter(est => est !== 'CERRADO' && est !== 'INGRESO' && est !== 'SALIDA').forEach(est=>{
     const chip = document.createElement('div');
     chip.className = 'chip' + (activeFilters.has(est) ? ' active' : '');
     chip.dataset.estado = est;
@@ -1724,73 +1827,6 @@ function restoreScrollState(state){
 }
 const prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-// ---------------------------------------------------------------------------
-// Redibujado por diferencias: en vez de que cada render() destruya TODAS las
-// filas de una tabla y las vuelva a crear desde cero (lo que reconstruye
-// hasta las filas que no cambiaron en absoluto), reconcileTbody() compara
-// fila por fila, por su clave (Id de registro o de sitio), y solo toca en el
-// DOM las filas que de verdad cambiaron o son nuevas. Las filas sin cambios
-// se dejan exactamente como están: mismo nodo, mismo scroll interno, mismo
-// hover, mismos listeners ya enganchados. Esto es lo que hace que, al llegar
-// un cambio de otro gestor, ya no se sienta como si "recargara" la tabla
-// entera, sino que solo se actualice lo que de verdad cambió — igual que en
-// una hoja de Excel, donde solo se repinta la celda que cambió.
-//
-// Es seguro reutilizar así los nodos viejos porque todos los listeners de
-// las filas (editar, cerrar, escalar, copiar, etc.) solo usan el Id fijo de
-// la fila (que nunca cambia mientras el registro exista) para buscar el dato
-// más reciente en el arreglo global `records`/`sites` en el momento del
-// clic — nunca dependen de una "foto" vieja tomada en el momento en que se
-// dibujó la fila. Por eso un listener enganchado hace varios render() sigue
-// siendo válido.
-function reconcileTbody(tbody, html, keyOf){
-  const shadow = document.createElement('tbody');
-  shadow.innerHTML = html;
-  const newRows = Array.from(shadow.children);
-  const oldByKey = new Map();
-  Array.from(tbody.children).forEach(el=>{
-    const k = keyOf(el);
-    if(k) oldByKey.set(k, el);
-  });
-  const touched = [];
-  const finalNodes = newRows.map(newEl=>{
-    const k = keyOf(newEl);
-    const oldEl = k ? oldByKey.get(k) : null;
-    if(oldEl){
-      oldByKey.delete(k);
-      if(oldEl.outerHTML === newEl.outerHTML){
-        return oldEl; // idéntica: se conserva el nodo tal cual, no se toca
-      }
-    }
-    touched.push(newEl); // nueva o cambiada: esta sí hay que engancharle listeners
-    return newEl;
-  });
-  tbody.replaceChildren(...finalNodes); // mover nodos existentes no los destruye ni les quita sus listeners
-  return touched;
-}
-// Igual que tbody.querySelectorAll(selector).forEach(...), pero acotado solo a las
-// filas realmente tocadas (nuevas/cambiadas) en vez de a toda la tabla — así no se
-// vuelven a enganchar listeners duplicados sobre filas que ya los tenían de antes.
-function queryAllIn(rootEls, selector){
-  const out = [];
-  rootEls.forEach(root=>{
-    if(root.matches && root.matches(selector)) out.push(root);
-    if(root.querySelectorAll) root.querySelectorAll(selector).forEach(el=>out.push(el));
-  });
-  return out;
-}
-// Clave de reconciliación por defecto: usa data-id (registros) o, si no hay,
-// data-group (filas de grupo/colapso masivo), o data-siteid (base de sitios).
-function defaultRowKey(el){
-  const id = el.getAttribute && el.getAttribute('data-id');
-  if(id) return 'id:' + id;
-  const grp = el.getAttribute && el.getAttribute('data-group');
-  if(grp) return 'grp:' + grp;
-  const siteId = el.getAttribute && el.getAttribute('data-siteid');
-  if(siteId) return 'site:' + siteId;
-  return null;
-}
-
 function render(){
   const scrollState = captureScrollState();
   // si había un menú flotante (escalar / estado eléctrico) abierto, se cierra antes de
@@ -1808,13 +1844,15 @@ function render(){
 
 function renderInner(){
   updateKpis();
-  const ericssonCount = records.filter(r => (r.gestor||'ERICSSON') === 'ERICSSON' && r.estado !== 'CERRADO').length;
-  const huaweiCount = records.filter(r => r.gestor === 'HUAWEI' && r.estado !== 'CERRADO').length;
+  const ericssonCount = records.filter(r => (r.gestor||'ERICSSON') === 'ERICSSON' && r.estado !== 'CERRADO' && r.estado !== 'INGRESO' && r.estado !== 'SALIDA').length;
+  const huaweiCount = records.filter(r => r.gestor === 'HUAWEI' && r.estado !== 'CERRADO' && r.estado !== 'INGRESO' && r.estado !== 'SALIDA').length;
+  const ingresosCount = records.filter(r => r.estado === 'INGRESO' || r.estado === 'SALIDA').length;
   const cerradosCount = records.filter(r => r.estado === 'CERRADO').length;
   const electricoCount = records.filter(r => r.reporteElectrico).length;
   const avisosPendientesCount = records.filter(r => r.seguimientoSolicitado && !r.seguimientoSolicitadoAtendido).length;
   document.getElementById('countEricsson').textContent = ericssonCount;
   document.getElementById('countHuawei').textContent = huaweiCount;
+  document.getElementById('countIngresos').textContent = ingresosCount;
   document.getElementById('countCerrados').textContent = cerradosCount;
   document.getElementById('countElectrico').textContent = electricoCount;
   document.getElementById('countSites').textContent = sites.length;
@@ -1832,13 +1870,18 @@ function renderInner(){
   buildFilterChips();
   const tbody = document.getElementById('tbody');
   const isCerradosTab = activeTab === 'CERRADOS';
+  const isIngresosTab = activeTab === 'INGRESOS';
   const gestor = currentGestor();
 
   let list;
   if(isCerradosTab){
     list = records.filter(r => r.estado === 'CERRADO');
+  } else if(isIngresosTab){
+    list = records.filter(r => r.estado === 'INGRESO' || r.estado === 'SALIDA');
+    if(ingresosSubFilter === 'INGRESOS') list = list.filter(r => r.estado === 'INGRESO');
+    else if(ingresosSubFilter === 'SALIDAS') list = list.filter(r => r.estado === 'SALIDA');
   } else {
-    list = records.filter(r => (r.gestor||'ERICSSON') === gestor && r.estado !== 'CERRADO');
+    list = records.filter(r => (r.gestor||'ERICSSON') === gestor && r.estado !== 'CERRADO' && r.estado !== 'INGRESO' && r.estado !== 'SALIDA');
   }
   list = list.slice().sort((a,b)=> (b.fechaAlarma||'').localeCompare(a.fechaAlarma||'') || (b.createdAt||0)-(a.createdAt||0));
 
@@ -1854,7 +1897,7 @@ function renderInner(){
   }
   updateSortIndicators();
 
-  if(!isCerradosTab && activeFilters.size > 0){
+  if(!isCerradosTab && !isIngresosTab && activeFilters.size > 0){
     list = list.filter(r => activeFilters.has(r.estado));
   }
   if(searchTerm.trim() !== ''){
@@ -1868,9 +1911,12 @@ function renderInner(){
   if(isCerradosTab){
     document.getElementById('subtitle').textContent =
       `Cerrados (Ericsson + Huawei) · ${list.length} registro${list.length===1?'':'s'}`;
+  } else if(isIngresosTab){
+    document.getElementById('subtitle').textContent =
+      `Ingresos (Ericsson + Huawei) · ${list.length} registro${list.length===1?'':'s'}`;
   } else {
     const gestorLabel = gestor === 'HUAWEI' ? 'Huawei' : 'Ericsson';
-    const totalForTab = records.filter(r => (r.gestor||'ERICSSON') === gestor && r.estado !== 'CERRADO').length;
+    const totalForTab = records.filter(r => (r.gestor||'ERICSSON') === gestor && r.estado !== 'CERRADO' && r.estado !== 'INGRESO' && r.estado !== 'SALIDA').length;
     document.getElementById('subtitle').textContent =
       `${gestorLabel} · ${totalForTab} registro${totalForTab===1?'':'s'} · ${list.length} visible${list.length===1?'':'s'}`;
   }
@@ -1878,7 +1924,7 @@ function renderInner(){
   document.getElementById('emptyState').style.display = list.length === 0 ? 'block' : 'none';
   document.getElementById('emptyState').textContent = isCerradosTab
     ? 'No hay registros cerrados todavía.'
-    : 'No hay registros todavía en esta pestaña. Crea el primero con "+ Nuevo registro".';
+    : (isIngresosTab ? 'No hay registros en ingreso todavía.' : 'No hay registros todavía en esta pestaña. Crea el primero con "+ Nuevo registro".');
 
   const sharedOts1Colors = computeSharedTicketColors(list, 'otsSev1');
   const sharedOts2Colors = computeSharedTicketColors(list, 'otsSev2');
@@ -1996,9 +2042,15 @@ function renderInner(){
           <div class="estado-cell">
             ${badgeHtml(r.estado)}
             <div class="estado-actions">
-              ${(r.estado !== 'ESCALADO A IP' && r.estado !== 'ESCALADO A DWDM') ? `<button type="button" class="action-btn action-escalate" data-escalate="${r.id}" title="Escalar">${ROW_ICONS.escalate}</button>` : ''}
-              ${r.estado !== 'CERRADO' ? `<button type="button" class="action-btn action-close" data-close="${r.id}" title="Cerrar registro">${ROW_ICONS.check}</button>` : ''}
-              ${(r.estado !== 'CERRADO' && r.estado !== 'PENDIENTE POR CIERRE') ? `<button type="button" class="action-btn action-pending" data-pending="${r.id}" title="Marcar como pendiente de cierre">${ROW_ICONS.pending}</button>` : ''}
+              ${(r.estado === 'INGRESO' || r.estado === 'SALIDA')
+                ? (r.estado === 'INGRESO' ? `<button type="button" class="action-btn action-salida" data-salida="${r.id}" title="Registrar salida">${ROW_ICONS.salida}</button>` : '')
+                : `
+                  ${r.estado === 'CERRADO'
+                    ? `<button type="button" class="action-btn action-reopen" data-reopen="${r.id}" title="Reabrir">${ROW_ICONS.reopen}</button>`
+                    : ((r.estado !== 'ESCALADO A IP' && r.estado !== 'ESCALADO A DWDM') ? `<button type="button" class="action-btn action-escalate" data-escalate="${r.id}" title="Escalar">${ROW_ICONS.escalate}</button>` : '')}
+                  ${r.estado !== 'CERRADO' ? `<button type="button" class="action-btn action-close" data-close="${r.id}" title="Cerrar registro">${ROW_ICONS.check}</button>` : ''}
+                  ${(r.estado !== 'CERRADO' && r.estado !== 'PENDIENTE POR CIERRE') ? `<button type="button" class="action-btn action-pending" data-pending="${r.id}" title="Marcar como pendiente de cierre">${ROW_ICONS.pending}</button>` : ''}
+                `}
             </div>
           </div>
         </td>
@@ -2031,6 +2083,8 @@ function renderInner(){
             ? `<div class="copy-cell"><span class="text-flag" title="${escapeHtml(r.teams)}">Texto</span><button type="button" class="copy-btn" data-copy="${escapeHtml(r.teams)}" title="Copiar">📋</button></div>`
             : '<span class="empty-dash">—</span>'}
         </td>
+        <td class="obs-text">${dash(r.actividad)}</td>
+        <td class="mono">${r.salidaAt ? formatDateTime(r.salidaAt) : '<span class="empty-dash">—</span>'}</td>
       </tr>
     `;
   }
@@ -2088,6 +2142,8 @@ function renderInner(){
         <td class="obs-text" style="max-width:260px;">
           ${allTeams ? `<button type="button" class="copy-btn" data-copy="${escapeHtml(allTeams)}" title="Copiar todos">📋 Copiar todos</button>` : '<span class="empty-dash">—</span>'}
         </td>
+        <td><span class="empty-dash">—</span></td>
+        <td><span class="empty-dash">—</span></td>
       </tr>
     `;
   }
@@ -2105,7 +2161,7 @@ function renderInner(){
           const tkSharing = closeTkCluster(groupRecords);
           const tkPending = tkSharing.filter(x=>x.estado!=='CERRADO');
           const closeBtnHtml = tkPending.length > 0 ? `<button type="button" class="close-tk-btn" data-close-tk-group="${gkey}" title="Cerrar todos los registros que comparten TK con un solo clic">${ROW_ICONS.check} Cerrar por TK (${tkPending.length})</button>` : '';
-          rowsHtml.push(`<tr class="masivo-collapse-row" data-group="${gkey}"><td colspan="18"><button type="button" class="masivo-toggle-btn" data-toggle-group="${gkey}">▾ Contraer grupo masivo (${groupRecords.length} Service ID)</button>${closeBtnHtml}</td></tr>`);
+          rowsHtml.push(`<tr class="masivo-collapse-row" data-group="${gkey}"><td colspan="20"><button type="button" class="masivo-toggle-btn" data-toggle-group="${gkey}">▾ Contraer grupo masivo (${groupRecords.length} Service ID)</button>${closeBtnHtml}</td></tr>`);
           groupRecords.forEach(gr => rowsHtml.push(buildRowHtml(gr, 'masivo-child')));
         } else {
           rowsHtml.push(buildMasivoGroupRowHtml(gkey, groupRecords));
@@ -2115,9 +2171,9 @@ function renderInner(){
     }
     rowsHtml.push(buildRowHtml(r));
   });
-  const touchedRows = reconcileTbody(tbody, rowsHtml.join(''), defaultRowKey);
+  tbody.innerHTML = rowsHtml.join('');
 
-  queryAllIn(touchedRows, 'tr').forEach(tr=>{
+  tbody.querySelectorAll('tr').forEach(tr=>{
     tr.addEventListener('click', (e)=>{
       // el clic en la fila ya NO abre el modal, así el agente puede seleccionar y copiar texto
       // (Ubicación, Reporte Eléctrico, Teams, etc.) sin que se le abra el formulario por accidente.
@@ -2129,13 +2185,13 @@ function renderInner(){
       if(id) openModal(id);
     });
   });
-  queryAllIn(touchedRows, '[data-edit]').forEach(btn=>{
+  tbody.querySelectorAll('[data-edit]').forEach(btn=>{
     btn.addEventListener('click', (e)=>{
       e.stopPropagation();
       openModal(btn.dataset.edit);
     });
   });
-  queryAllIn(touchedRows, '[data-copy]').forEach(btn=>{
+  tbody.querySelectorAll('[data-copy]').forEach(btn=>{
     btn.addEventListener('click', async (e)=>{
       e.stopPropagation();
       const text = btn.dataset.copy;
@@ -2147,7 +2203,7 @@ function renderInner(){
       }
     });
   });
-  queryAllIn(touchedRows, '[data-del]').forEach(btn=>{
+  tbody.querySelectorAll('[data-del]').forEach(btn=>{
     btn.addEventListener('click', async (e)=>{
       e.stopPropagation();
       const id = btn.dataset.del;
@@ -2158,7 +2214,7 @@ function renderInner(){
       showToast('Registro eliminado');
     });
   });
-  queryAllIn(touchedRows, '[data-close]').forEach(btn=>{
+  tbody.querySelectorAll('[data-close]').forEach(btn=>{
     btn.addEventListener('click', async (e)=>{
       e.stopPropagation();
       const id = btn.dataset.close;
@@ -2171,7 +2227,7 @@ function renderInner(){
       showToast('Registro cerrado');
     });
   });
-  queryAllIn(touchedRows, '[data-pending]').forEach(btn=>{
+  tbody.querySelectorAll('[data-pending]').forEach(btn=>{
     btn.addEventListener('click', async (e)=>{
       e.stopPropagation();
       const id = btn.dataset.pending;
@@ -2183,19 +2239,47 @@ function renderInner(){
       showToast('Registro marcado como pendiente de cierre');
     });
   });
-  queryAllIn(touchedRows, '[data-escalate]').forEach(btn=>{
+  tbody.querySelectorAll('[data-escalate]').forEach(btn=>{
     btn.addEventListener('click', (e)=>{
       e.stopPropagation();
       showEscalateMenu(btn, btn.dataset.escalate);
     });
   });
-  queryAllIn(touchedRows, '[data-id-menu]').forEach(cell=>{
+  tbody.querySelectorAll('[data-reopen]').forEach(btn=>{
+    btn.addEventListener('click', async (e)=>{
+      e.stopPropagation();
+      const id = btn.dataset.reopen;
+      const rec = records.find(r=>r.id===id);
+      if(!rec) return;
+      if(!confirm('¿Reabrir este registro? Pasará a estado "En gestión".')) return;
+      rec.estado = 'EN GESTION';
+      render();
+      await saveRecords();
+      showToast('Registro reabierto');
+    });
+  });
+  tbody.querySelectorAll('[data-salida]').forEach(btn=>{
+    btn.addEventListener('click', async (e)=>{
+      e.stopPropagation();
+      const id = btn.dataset.salida;
+      const rec = records.find(r=>r.id===id);
+      if(!rec) return;
+      if(!confirm('¿Registrar la salida de este ingreso con la fecha y hora actuales?')) return;
+      rec.salidaAt = Date.now();
+      rec.estado = 'SALIDA';
+      ingresosSubFilter = 'SALIDAS';
+      render();
+      await saveRecords();
+      showToast('Salida registrada');
+    });
+  });
+  tbody.querySelectorAll('[data-id-menu]').forEach(cell=>{
     cell.addEventListener('click', (e)=>{
       e.stopPropagation();
       showIdStatusMenu(cell, cell.dataset.idMenu);
     });
   });
-  queryAllIn(touchedRows, '[data-toggle-group]').forEach(btn=>{
+  tbody.querySelectorAll('[data-toggle-group]').forEach(btn=>{
     btn.addEventListener('click', (e)=>{
       e.stopPropagation();
       const gkey = btn.dataset.toggleGroup;
@@ -2204,7 +2288,7 @@ function renderInner(){
       render();
     });
   });
-  queryAllIn(touchedRows, '[data-del-group]').forEach(btn=>{
+  tbody.querySelectorAll('[data-del-group]').forEach(btn=>{
     btn.addEventListener('click', async (e)=>{
       e.stopPropagation();
       const gkey = btn.dataset.delGroup;
@@ -2218,7 +2302,7 @@ function renderInner(){
       showToast('Grupo masivo eliminado');
     });
   });
-  queryAllIn(touchedRows, '[data-close-tk]').forEach(btn=>{
+  tbody.querySelectorAll('[data-close-tk]').forEach(btn=>{
     btn.addEventListener('click', async (e)=>{
       e.stopPropagation();
       const id = btn.dataset.closeTk;
@@ -2234,7 +2318,7 @@ function renderInner(){
       showToast(`${pendientes.length} registro(s) cerrado(s) por TK compartido`);
     });
   });
-  queryAllIn(touchedRows, '[data-close-tk-group]').forEach(btn=>{
+  tbody.querySelectorAll('[data-close-tk-group]').forEach(btn=>{
     btn.addEventListener('click', async (e)=>{
       e.stopPropagation();
       const gkey = btn.dataset.closeTkGroup;
@@ -2255,7 +2339,7 @@ function renderInner(){
       showToast(`${pendientes.length} registro(s) cerrado(s) por TK compartido`);
     });
   });
-  queryAllIn(touchedRows, '[data-pending-group]').forEach(btn=>{
+  tbody.querySelectorAll('[data-pending-group]').forEach(btn=>{
     btn.addEventListener('click', async (e)=>{
       e.stopPropagation();
       const gkey = btn.dataset.pendingGroup;
@@ -2323,7 +2407,7 @@ function renderElectrico(){
   const sharedOts1ColorsElectrico = computeSharedTicketColors(list, 'otsSev1');
   const sharedOts2ColorsElectrico = computeSharedTicketColors(list, 'otsSev2');
 
-  const electricoRowsHtml = list.map(r => {
+  tbody.innerHTML = list.map(r => {
     const cls = ESTADO_CLASS[r.estado] || 'CERRADO';
     const gestorLabel = r.gestor === 'HUAWEI' ? 'Huawei' : 'Ericsson';
     const proveedor = r.reporteElectricoProveedor || '';
@@ -2408,9 +2492,8 @@ function renderElectrico(){
       </tr>
     `;
   }).join('');
-  const touchedRows = reconcileTbody(tbody, electricoRowsHtml, defaultRowKey);
 
-  queryAllIn(touchedRows, 'tr').forEach(tr=>{
+  tbody.querySelectorAll('tr').forEach(tr=>{
     tr.addEventListener('click', (e)=>{
       // el clic en la fila ya NO abre el registro, así el agente puede seleccionar y copiar texto libremente.
       // Usa el botón 👁 o doble clic para ver el registro completo.
@@ -2421,13 +2504,13 @@ function renderElectrico(){
       if(id) openModal(id, true);
     });
   });
-  queryAllIn(touchedRows, '[data-viewcase]').forEach(btn=>{
+  tbody.querySelectorAll('[data-viewcase]').forEach(btn=>{
     btn.addEventListener('click', (e)=>{
       e.stopPropagation();
       openModal(btn.dataset.viewcase, true);
     });
   });
-  queryAllIn(touchedRows, '[data-copy]').forEach(btn=>{
+  tbody.querySelectorAll('[data-copy]').forEach(btn=>{
     btn.addEventListener('click', async (e)=>{
       e.stopPropagation();
       const text = btn.dataset.copy;
@@ -2439,7 +2522,7 @@ function renderElectrico(){
       }
     });
   });
-  queryAllIn(touchedRows, '[data-ubictoggle]').forEach(btn=>{
+  tbody.querySelectorAll('[data-ubictoggle]').forEach(btn=>{
     btn.addEventListener('click', (e)=>{
       e.stopPropagation();
       const id = btn.dataset.ubictoggle;
@@ -2447,7 +2530,7 @@ function renderElectrico(){
       render();
     });
   });
-  queryAllIn(touchedRows, '[data-toggleaviso]').forEach(cb=>{
+  tbody.querySelectorAll('[data-toggleaviso]').forEach(cb=>{
     cb.addEventListener('change', async (e)=>{
       const id = cb.dataset.toggleaviso;
       const rec = records.find(x=>x.id === id);
@@ -2459,7 +2542,7 @@ function renderElectrico(){
       }
     });
   });
-  queryAllIn(touchedRows, '[data-toggleenviado]').forEach(cb=>{
+  tbody.querySelectorAll('[data-toggleenviado]').forEach(cb=>{
     cb.addEventListener('change', async (e)=>{
       const id = cb.dataset.toggleenviado;
       await touchSeguimiento(id, rec => { rec.reporteElectricoEnviado = cb.checked; });
@@ -2471,7 +2554,7 @@ function renderElectrico(){
     el.addEventListener('focus', ()=>{ isInlineEditing = true; });
     el.addEventListener('blur', ()=>{ isInlineEditing = false; });
   }
-  queryAllIn(touchedRows, '[data-seguimientotexto]').forEach(input=>{
+  tbody.querySelectorAll('[data-seguimientotexto]').forEach(input=>{
     trackInlineEditing(input);
     input.addEventListener('change', async (e)=>{
       const id = input.dataset.seguimientotexto;
@@ -2480,7 +2563,7 @@ function renderElectrico(){
       showToast('Seguimiento guardado');
     });
   });
-  queryAllIn(touchedRows, '[data-reportetexto]').forEach(input=>{
+  tbody.querySelectorAll('[data-reportetexto]').forEach(input=>{
     trackInlineEditing(input);
     input.addEventListener('change', async (e)=>{
       const id = input.dataset.reportetexto;
@@ -2489,7 +2572,7 @@ function renderElectrico(){
       showToast('Reporte eléctrico guardado');
     });
   });
-  queryAllIn(touchedRows, '[data-proveedor]').forEach(sel=>{
+  tbody.querySelectorAll('[data-proveedor]').forEach(sel=>{
     trackInlineEditing(sel);
     sel.addEventListener('change', async (e)=>{
       const id = sel.dataset.proveedor;
@@ -2498,7 +2581,7 @@ function renderElectrico(){
       showToast('Proveedor actualizado');
     });
   });
-  queryAllIn(touchedRows, '[data-estadoreporte]').forEach(sel=>{
+  tbody.querySelectorAll('[data-estadoreporte]').forEach(sel=>{
     trackInlineEditing(sel);
     sel.addEventListener('change', async (e)=>{
       const id = sel.dataset.estadoreporte;
@@ -2507,7 +2590,7 @@ function renderElectrico(){
       showToast('Estado de reporte actualizado');
     });
   });
-  queryAllIn(touchedRows, '[data-unflag]').forEach(btn=>{
+  tbody.querySelectorAll('[data-unflag]').forEach(btn=>{
     btn.addEventListener('click', async (e)=>{
       e.stopPropagation();
       const id = btn.dataset.unflag;
@@ -2539,7 +2622,7 @@ function renderSites(){
 
   document.getElementById('sitesEmptyState').style.display = list.length === 0 ? 'block' : 'none';
 
-  const sitesRowsHtml = list.map(s => `
+  tbody.innerHTML = list.map(s => `
     <tr data-siteid="${escapeHtml(s.id)}">
       <td class="mono" style="color:var(--text); font-weight:600;">${dashHl(s.siteId, siteSearchTerm)}</td>
       <td>${dashHl(s.siteName, siteSearchTerm)}</td>
@@ -2560,15 +2643,14 @@ function renderSites(){
       <td><button class="del-btn" data-delsite="${escapeHtml(s.id)}" title="Eliminar">✕</button></td>
     </tr>
   `).join('');
-  const touchedRows = reconcileTbody(tbody, sitesRowsHtml, defaultRowKey);
 
-  queryAllIn(touchedRows, 'tr').forEach(tr=>{
+  tbody.querySelectorAll('tr').forEach(tr=>{
     tr.addEventListener('click', (e)=>{
       if(e.target.closest('[data-delsite]')) return;
       requireAdminPin('editar un sitio existente', ()=> openSiteModal(tr.dataset.siteid));
     });
   });
-  queryAllIn(touchedRows, '[data-delsite]').forEach(btn=>{
+  tbody.querySelectorAll('[data-delsite]').forEach(btn=>{
     btn.addEventListener('click', (e)=>{
       e.stopPropagation();
       const id = btn.dataset.delsite;
@@ -2837,12 +2919,14 @@ function downloadCsv(filename, headers, rows){
 
 async function exportToCSV(){
   const isCerradosTab = activeTab === 'CERRADOS';
+  const isIngresosTab = activeTab === 'INGRESOS';
   const gestor = currentGestor();
-  const list = isCerradosTab
-    ? records.filter(r => r.estado === 'CERRADO')
-    : records.filter(r => (r.gestor||'ERICSSON') === gestor && r.estado !== 'CERRADO');
+  let list;
+  if(isCerradosTab) list = records.filter(r => r.estado === 'CERRADO');
+  else if(isIngresosTab) list = records.filter(r => r.estado === 'INGRESO' || r.estado === 'SALIDA');
+  else list = records.filter(r => (r.gestor||'ERICSSON') === gestor && r.estado !== 'CERRADO' && r.estado !== 'INGRESO' && r.estado !== 'SALIDA');
   if(list.length === 0){
-    showToast(isCerradosTab ? 'No hay registros cerrados para exportar' : 'No hay registros para exportar en esta pestaña', 'info');
+    showToast(isCerradosTab ? 'No hay registros cerrados para exportar' : (isIngresosTab ? 'No hay registros en ingreso para exportar' : 'No hay registros para exportar en esta pestaña'), 'info');
     return;
   }
   const btn = document.getElementById('exportBtn');
@@ -2872,10 +2956,12 @@ async function exportToCSV(){
     const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
     ws['!cols'] = headers.map(()=> ({ wch: 18 }));
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, isCerradosTab ? 'Cerrados' : (gestor === 'HUAWEI' ? 'Huawei' : 'Ericsson'));
+    const sheetName = isCerradosTab ? 'Cerrados' : (isIngresosTab ? 'Ingresos' : (gestor === 'HUAWEI' ? 'Huawei' : 'Ericsson'));
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
 
     const stamp = new Date().toISOString().slice(0,16).replace(/[:T]/g,'-');
-    XLSX.writeFile(wb, `bitacora_${isCerradosTab ? 'cerrados' : gestor.toLowerCase()}_${stamp}.xlsx`);
+    const fileTag = isCerradosTab ? 'cerrados' : (isIngresosTab ? 'ingresos' : gestor.toLowerCase());
+    XLSX.writeFile(wb, `bitacora_${fileTag}_${stamp}.xlsx`);
     showToast('Excel exportado');
   }catch(err){
     showToast(err.message || 'No se pudo generar el Excel');
@@ -2981,6 +3067,15 @@ function generateTeamsText(r){
   return '|' + parts.join('|') + '|';
 }
 
+// Mensaje tipo Teams para registros de INGRESO: usa fecha, Service ID/Nombre, Contacto,
+// Actividad y (si aplica) el TP asociado, en vez de los campos de falla (OTS/Proceso/Observación).
+function generateIngresoTeamsText(r){
+  const siteLabel = r.nombreSitio ? `${r.serviceId||''} - ${r.nombreSitio}` : (r.serviceId||'');
+  const parts = [r.fechaAlarma||'', siteLabel, r.contacto||'', r.actividad||''];
+  if((r.tpChange||'').trim() !== '') parts.push(`TP ${r.tpChange.trim()}`);
+  return '|INGRESO|' + parts.join('|') + '|';
+}
+
 /* ---------------- CASE MODAL ---------------- */
 
 function openModal(id, readOnly){
@@ -2992,6 +3087,7 @@ function openModal(id, readOnly){
   const r = editingId ? records.find(x=>x.id===editingId) : {
     id: uid(), estado:'EN GESTION', otsSev1:'', fechaAlarma:new Date().toISOString().slice(0,10),
     otsSev2:'', tpChange:'', serviceId:'', categoria:'', proceso:'', observacion:'', vip:'NO', seguridad:'', teams:'',
+    contacto:'', actividad:'', salidaAt:null,
     tipoProceso:'UNICO',
     gestor: defaultGestor, reporteElectrico:false, reporteElectricoEnviado:false,
     reporteElectricoTexto:'', reporteElectricoProveedor:'', reporteElectricoEstado:'',
@@ -3024,7 +3120,7 @@ function openModal(id, readOnly){
             ${ESTADOS.map(e=>`<option value="${e}" ${r.estado===e?'selected':''}>${e}</option>`).join('')}
           </select>
         </div>
-        <div class="full">
+        <div class="full" id="fieldTipoProceso">
           <label>Tipo de proceso</label>
           <div class="tipo-toggle">
             <button type="button" class="tipo-btn ${r.tipoProceso!=='MASIVO' ? 'active-tipo' : ''}" id="f_tipo_unico">Único</button>
@@ -3043,6 +3139,19 @@ function openModal(id, readOnly){
             </div>
           </div>
           <div id="siteHintBox"></div>
+          <div id="ingresoActivoHintBox"></div>
+        </div>
+        <div class="full" id="ingresoFieldsBox" style="${(r.estado==='INGRESO' || r.estado==='SALIDA') ? '' : 'display:none;'}">
+          <div class="unico-grid">
+            <div>
+              <label>Contacto</label>
+              <input type="text" id="f_contacto" value="${escapeHtml(r.contacto||'')}" placeholder="Nombre de quien reporta / atiende" />
+            </div>
+            <div>
+              <label>Actividad</label>
+              <input type="text" id="f_actividad" value="${escapeHtml(r.actividad||'')}" placeholder="Qué se va a realizar" />
+            </div>
+          </div>
         </div>
         <div class="full" id="masivoBox" style="${r.tipoProceso==='MASIVO' ? '' : 'display:none;'}">
           <label>Tipo de masivo (selecciona una o varias)</label>
@@ -3079,7 +3188,7 @@ function openModal(id, readOnly){
             </div>
           </div>
         </div>
-        <div>
+        <div id="fieldOtsSev1">
           <label>OTS Sev 3</label>
           <input type="text" id="f_otsSev1" value="${escapeHtml(r.otsSev1)}" inputmode="numeric" />
         </div>
@@ -3087,18 +3196,18 @@ function openModal(id, readOnly){
           <label>Fecha de la alarma</label>
           <input type="date" id="f_fecha" value="${escapeHtml(r.fechaAlarma)}" />
         </div>
-        <div>
+        <div id="fieldOtsSev2">
           <label>OTS Sev 4</label>
           <input type="text" id="f_otsSev2" value="${escapeHtml(r.otsSev2)}" inputmode="numeric" />
         </div>
         <div>
-          <label>TP Change</label>
+          <label id="f_tpChange_label">TP Change</label>
           <input type="text" id="f_tpChange" value="${escapeHtml(r.tpChange)}" inputmode="numeric" />
         </div>
         <div class="full" id="tkHint" style="display:none; margin-top:-8px;">
           <span style="font-size:11px; color:var(--text-faint);">⚠ En un masivo debes diligenciar al menos uno de estos 3 campos (OTS Sev 3, OTS Sev 4 o TP Change), solo con números.</span>
         </div>
-        <div class="full">
+        <div class="full" id="fieldProceso">
           <label>Proceso</label>
           <select id="f_proceso">
             <option value="" ${!r.proceso ? 'selected' : ''}>— Seleccionar —</option>
@@ -3106,7 +3215,7 @@ function openModal(id, readOnly){
             ${(r.proceso && !PROCESO_OPTIONS.includes(r.proceso)) ? `<option value="${escapeHtml(r.proceso)}" selected>${escapeHtml(r.proceso)}</option>` : ''}
           </select>
         </div>
-        <div class="full">
+        <div class="full" id="fieldObservacion">
           <label>Observación</label>
           <textarea id="f_observacion">${escapeHtml(r.observacion)}</textarea>
         </div>
@@ -3116,10 +3225,10 @@ function openModal(id, readOnly){
             <textarea id="f_teams">${escapeHtml(r.teams)}</textarea>
             <button type="button" class="gen-btn" id="f_gen" style="${readOnly ? 'display:none;' : ''}" title="El resumen se genera solo al llenar los campos; usa este botón para forzar la regeneración si ya lo editaste a mano">Regenerar</button>
           </div>
-          ${readOnly ? '' : `<span class="hint" style="font-size:11px;">Este resumen se arma solo con OTS Sev 3/4, Service ID, Nombre, Proceso y Observación. Si lo editas a mano aquí, tus cambios no se sobrescriben.</span>`}
+          ${readOnly ? '' : `<span class="hint" id="teamsHint" style="font-size:11px;">Este resumen se arma solo con OTS Sev 3/4, Service ID, Nombre, Proceso y Observación. Si lo editas a mano aquí, tus cambios no se sobrescriben.</span>`}
         </div>
         ${readOnly ? '' : `
-        <div class="full electrico-box">
+        <div class="full electrico-box" id="fieldReporteElectrico">
           <label class="electrico-check" style="margin-bottom:0;">
             <input type="checkbox" id="f_reporteElectrico" ${r.reporteElectrico ? 'checked' : ''} />
             <span class="lbl">⚡ Solicitar reporte eléctrico</span>
@@ -3157,6 +3266,14 @@ function openModal(id, readOnly){
     document.getElementById('masivoBox').style.display = 'none';
     document.getElementById('f_serviceId').value = r.serviceId || '';
     document.getElementById('f_nombre').value = r.nombreSitio || '';
+    if(r.estado === 'INGRESO' || r.estado === 'SALIDA'){
+      const fOts1 = document.getElementById('fieldOtsSev1'); if(fOts1) fOts1.style.display = 'none';
+      const fOts2 = document.getElementById('fieldOtsSev2'); if(fOts2) fOts2.style.display = 'none';
+      const fProc = document.getElementById('fieldProceso'); if(fProc) fProc.style.display = 'none';
+      const fObs = document.getElementById('fieldObservacion'); if(fObs) fObs.style.display = 'none';
+      const fTipo = document.getElementById('fieldTipoProceso'); if(fTipo) fTipo.style.display = 'none';
+      const tpLbl = document.getElementById('f_tpChange_label'); if(tpLbl) tpLbl.textContent = 'TP asociado (si aplica)';
+    }
     if(r.tipoProceso === 'MASIVO' && r.categoria){
       document.getElementById('f_tipo_masivo').classList.add('active-tipo');
       document.getElementById('f_tipo_unico').classList.remove('active-tipo');
@@ -3173,12 +3290,19 @@ function openModal(id, readOnly){
         ? `<div class="site-name-hint ${siteHintClass(roVip, roSeguridad)}">✓ Encontrado en base de sitios · VIP: ${escapeHtml(roVip)}${roSeguridad ? ' · Seguridad: ' + escapeHtml(roSeguridad) : ''}</div>`
         : `<div class="site-name-hint missing">⚠ Este Service ID no está en la base de sitios</div>`;
     }
+    const roIngresoActivoBox = document.getElementById('ingresoActivoHintBox');
+    if(roIngresoActivoBox){
+      const roActivo = findIngresoActivoPorServiceId(r.serviceId, r.id);
+      roIngresoActivoBox.innerHTML = roActivo
+        ? `<div class="site-name-hint ingreso-alert">⚠ Hay un ingreso activo en esta RBS${roActivo.fechaAlarma ? ` (desde ${escapeHtml(roActivo.fechaAlarma)})` : ''}${roActivo.contacto ? ` · Contacto: ${escapeHtml(roActivo.contacto)}` : ''}</div>`
+        : '';
+    }
     document.getElementById('modalCancel').onclick = closeModal;
     document.getElementById('modalCloseX').onclick = closeModal;
     return;
   }
 
-  const CASE_FORM_FIELD_IDS = ['f_estado','f_serviceId','f_nombre','f_otsSev1','f_fecha','f_otsSev2','f_tpChange','f_proceso','f_observacion','f_teams'];
+  const CASE_FORM_FIELD_IDS = ['f_estado','f_serviceId','f_nombre','f_otsSev1','f_fecha','f_otsSev2','f_tpChange','f_proceso','f_observacion','f_teams','f_contacto','f_actividad'];
   const initialSnapshot = {};
   CASE_FORM_FIELD_IDS.forEach(id => { initialSnapshot[id] = document.getElementById(id).value; });
   initialSnapshot['f_reporteElectrico'] = document.getElementById('f_reporteElectrico').checked;
@@ -3310,6 +3434,20 @@ function openModal(id, readOnly){
   const serviceIdInput = document.getElementById('f_serviceId');
   const nombreInput = document.getElementById('f_nombre');
   const siteHintBox = document.getElementById('siteHintBox');
+  const ingresoActivoHintBox = document.getElementById('ingresoActivoHintBox');
+
+  function updateIngresoActivoHint(){
+    const val = serviceIdInput.value.trim();
+    if(val === ''){ ingresoActivoHintBox.innerHTML = ''; return; }
+    const activo = findIngresoActivoPorServiceId(val, editingId);
+    if(activo){
+      const quien = activo.contacto ? ` · Contacto: ${escapeHtml(activo.contacto)}` : '';
+      const cuando = activo.fechaAlarma ? ` (desde ${escapeHtml(activo.fechaAlarma)})` : '';
+      ingresoActivoHintBox.innerHTML = `<div class="site-name-hint ingreso-alert">⚠ Hay un ingreso activo en esta RBS${cuando}${quien}</div>`;
+    } else {
+      ingresoActivoHintBox.innerHTML = '';
+    }
+  }
 
   function applySiteMatch(site, autoFillNombre){
     if(autoFillNombre) nombreInput.value = site.siteName || '';
@@ -3350,9 +3488,10 @@ function openModal(id, readOnly){
   }
 
   // al escribir el Service ID, autocompleta Nombre y VIP; al abrir para editar, solo muestra el estado sin pisar datos ya guardados
-  serviceIdInput.addEventListener('input', ()=> updateSiteHint(true));
+  serviceIdInput.addEventListener('input', ()=> { updateSiteHint(true); updateIngresoActivoHint(); });
   nombreInput.addEventListener('change', tryMatchByNombre);
   updateSiteHint(false);
+  updateIngresoActivoHint();
   refreshTipoProcesoUI();
 
   const reporteElectricoCb = document.getElementById('f_reporteElectrico');
@@ -3391,8 +3530,66 @@ function openModal(id, readOnly){
     refreshSeguimientoCountBadge();
   });
 
+  /* ---- Modo INGRESO: al elegir el estado "INGRESO" el formulario se reduce a los campos
+     relevantes (Fecha con la actual, Service ID, Nombre, Contacto, Actividad y TP asociado
+     si aplica) y oculta lo que no aplica (OTS Sev3/4, Proceso, Observación, masivo, eléctrico). ---- */
+  const estadoSelect = document.getElementById('f_estado');
+  const fechaInput = document.getElementById('f_fecha');
+  const ingresoFieldsBox = document.getElementById('ingresoFieldsBox');
+  const fieldOtsSev1 = document.getElementById('fieldOtsSev1');
+  const fieldOtsSev2 = document.getElementById('fieldOtsSev2');
+  const fieldProceso = document.getElementById('fieldProceso');
+  const fieldObservacion = document.getElementById('fieldObservacion');
+  const fieldTipoProceso = document.getElementById('fieldTipoProceso');
+  const fieldReporteElectrico = document.getElementById('fieldReporteElectrico');
+  const tpChangeLabel = document.getElementById('f_tpChange_label');
+  let prevEstadoWasIngreso = (estadoSelect.value === 'INGRESO' || estadoSelect.value === 'SALIDA');
+
+  function updateIngresoModeUI(justSwitchedIn){
+    const ingresoMode = (estadoSelect.value === 'INGRESO' || estadoSelect.value === 'SALIDA');
+    ingresoFieldsBox.style.display = ingresoMode ? '' : 'none';
+    fieldOtsSev1.style.display = ingresoMode ? 'none' : '';
+    fieldOtsSev2.style.display = ingresoMode ? 'none' : '';
+    fieldProceso.style.display = ingresoMode ? 'none' : '';
+    fieldObservacion.style.display = ingresoMode ? 'none' : '';
+    fieldTipoProceso.style.display = ingresoMode ? 'none' : '';
+    if(fieldReporteElectrico) fieldReporteElectrico.style.display = ingresoMode ? 'none' : '';
+    if(seguimientoBox) seguimientoBox.style.display = ingresoMode ? 'none' : '';
+    tpChangeLabel.textContent = ingresoMode ? 'TP asociado (si aplica)' : 'TP Change';
+    const teamsHintEl = document.getElementById('teamsHint');
+    if(teamsHintEl){
+      teamsHintEl.textContent = ingresoMode
+        ? 'Este resumen se arma solo con Fecha, Service ID, Nombre, Contacto, Actividad y TP asociado. Si lo editas a mano aquí, tus cambios no se sobrescriben.'
+        : 'Este resumen se arma solo con OTS Sev 3/4, Service ID, Nombre, Proceso y Observación. Si lo editas a mano aquí, tus cambios no se sobrescriben.';
+    }
+    if(ingresoMode && tipoProceso === 'MASIVO'){
+      tipoProceso = 'UNICO';
+      refreshTipoProcesoUI();
+    }
+    if(ingresoMode && justSwitchedIn){
+      fechaInput.value = new Date().toISOString().slice(0,10);
+    }
+    regenerateTeams(false);
+  }
+  estadoSelect.addEventListener('change', ()=>{
+    const nowIngreso = (estadoSelect.value === 'INGRESO' || estadoSelect.value === 'SALIDA');
+    updateIngresoModeUI(nowIngreso && !prevEstadoWasIngreso);
+    prevEstadoWasIngreso = nowIngreso;
+  });
+
   // ---- Generación automática del resumen "Teams" a partir de los demás campos ----
   function computeTeamsText(){
+    if(estadoSelect.value === 'INGRESO' || estadoSelect.value === 'SALIDA'){
+      const draft = {
+        fechaAlarma: fechaInput.value,
+        serviceId: document.getElementById('f_serviceId').value,
+        nombreSitio: document.getElementById('f_nombre').value,
+        contacto: document.getElementById('f_contacto').value.trim(),
+        actividad: document.getElementById('f_actividad').value.trim(),
+        tpChange: document.getElementById('f_tpChange').value.trim()
+      };
+      return generateIngresoTeamsText(draft);
+    }
     const otsSev1 = document.getElementById('f_otsSev1').value.trim();
     const otsSev2 = document.getElementById('f_otsSev2').value.trim();
     const proceso = document.getElementById('f_proceso').value.trim();
@@ -3430,12 +3627,15 @@ function openModal(id, readOnly){
     lastAutoTeams = generated;
   }
 
+  updateIngresoModeUI(false);
+
+
   // Botón "Generar": fuerza la regeneración aunque el campo se haya editado a mano.
   document.getElementById('f_gen').onclick = ()=> regenerateTeams(true);
 
   // Cualquier campo que alimenta el resumen dispara la regeneración automática
   // (mientras el agente no haya escrito algo distinto a mano en el campo Teams).
-  const TEAMS_SOURCE_FIELD_IDS = ['f_otsSev1','f_otsSev2','f_serviceId','f_nombre','f_proceso','f_observacion'];
+  const TEAMS_SOURCE_FIELD_IDS = ['f_otsSev1','f_otsSev2','f_serviceId','f_nombre','f_proceso','f_observacion','f_fecha','f_tpChange','f_contacto','f_actividad'];
   TEAMS_SOURCE_FIELD_IDS.forEach(id=>{
     const el = document.getElementById(id);
     el.addEventListener('input', ()=> regenerateTeams(false));
@@ -3592,6 +3792,9 @@ function openModal(id, readOnly){
       tipoProceso: tipoProceso,
       proceso: document.getElementById('f_proceso').value.trim(),
       observacion: document.getElementById('f_observacion').value.trim(),
+      contacto: document.getElementById('f_contacto').value.trim(),
+      actividad: document.getElementById('f_actividad').value.trim(),
+      salidaAt: r.salidaAt || null,
       vip: vip,
       seguridad: seguridad,
       teams: document.getElementById('f_teams').value,
@@ -3618,7 +3821,7 @@ function openModal(id, readOnly){
     // se aplica y se ve de inmediato; la relectura/reconciliación con el servidor
     // (para no pisar cambios de otro gestor) pasa por debajo, sin bloquear la pantalla
     closeModal();
-    switchTab(openedFromTab === 'ELECTRICO' ? 'ELECTRICO' : (updated.estado === 'CERRADO' ? 'CERRADOS' : (gestor === 'HUAWEI' ? 'HUAWEI' : 'ERICSSON')));
+    switchTab(openedFromTab === 'ELECTRICO' ? 'ELECTRICO' : (updated.estado === 'CERRADO' ? 'CERRADOS' : ((updated.estado === 'INGRESO' || updated.estado === 'SALIDA') ? 'INGRESOS' : (gestor === 'HUAWEI' ? 'HUAWEI' : 'ERICSSON'))));
     showToast(editingId ? 'Cambios guardados' : 'Registro creado');
     commitRecordsChange(list => {
       const idx = list.findIndex(x=>x.id === updated.id);
@@ -4035,6 +4238,93 @@ themeToggleBtn.addEventListener('click', async ()=>{
 });
 
 loadThemePreference();
+
+/* ---------------- CLIC PARA COPIAR TK (OTS Sev3, OTS Sev4, TP Change) ---------------- */
+// Delegado a nivel documento (una sola vez): cubre las celdas de todas las tablas
+// (Ericsson/Huawei y Eléctrico), incluso tras cada re-render, sin re-enlazar listeners.
+document.addEventListener('click', async (e)=>{
+  const cell = e.target.closest('.tk-copy');
+  if(!cell) return;
+  e.stopPropagation();
+  const value = cell.dataset.copy || cell.textContent.trim();
+  if(!value) return;
+  const ok = await copyTextToClipboard(value);
+  showToast(ok ? `TK ${value} copiado al portapapeles` : 'No se pudo copiar el TK', ok ? 'success' : 'error');
+});
+
+/* ---------------- COLUMNAS AJUSTABLES (arrastrar el borde derecho de cada encabezado) ----------------
+   El ancho elegido se recuerda por gestor (como el tema), no se comparte con los demás. */
+async function saveColumnWidths(tableKey, widths){
+  try{ await window.storage.set(`col-widths:${tableKey}`, JSON.stringify(widths), false); }
+  catch(e){ /* preferencia de ancho no crítica: si falla, simplemente no se recuerda */ }
+}
+
+async function loadColumnWidths(tableKey){
+  try{
+    const res = await window.storage.get(`col-widths:${tableKey}`, false);
+    const widths = JSON.parse(res.value);
+    return Array.isArray(widths) ? widths : null;
+  }catch(e){ return null; }
+}
+
+async function makeTableResizable(table){
+  if(!table || table.dataset.resizableInit) return;
+  table.dataset.resizableInit = '1';
+  const tableKey = table.id;
+  const ths = Array.from(table.querySelectorAll('thead th'));
+  if(ths.length === 0) return;
+
+  // aplica anchos guardados de una sesión anterior, si existen
+  const saved = tableKey ? await loadColumnWidths(tableKey) : null;
+  if(saved && saved.length === ths.length){
+    table.classList.add('col-resizable');
+    ths.forEach((th,i)=>{ if(saved[i]) th.style.width = saved[i] + 'px'; });
+  }
+
+  ths.forEach((th, idx)=>{
+    const resizer = document.createElement('span');
+    resizer.className = 'col-resizer';
+    resizer.addEventListener('click', e=> e.stopPropagation()); // no disparar el ordenamiento de la columna
+    th.appendChild(resizer);
+
+    resizer.addEventListener('mousedown', (e)=>{
+      e.preventDefault();
+      e.stopPropagation();
+      const startX = e.clientX;
+      // fija el ancho actual de TODAS las columnas antes de pasar a layout fijo,
+      // para que ninguna otra columna "salte" al iniciar el arrastre
+      const startWidths = ths.map(t=> t.getBoundingClientRect().width);
+      table.classList.add('col-resizable');
+      ths.forEach((t,i)=>{ t.style.width = startWidths[i] + 'px'; });
+      resizer.classList.add('resizing');
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+
+      function onMove(ev){
+        const delta = ev.clientX - startX;
+        const newWidth = Math.max(50, startWidths[idx] + delta);
+        th.style.width = newWidth + 'px';
+      }
+      function onUp(){
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        resizer.classList.remove('resizing');
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        if(tableKey){
+          const widths = ths.map(t=> Math.round(t.getBoundingClientRect().width));
+          saveColumnWidths(tableKey, widths);
+        }
+      }
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+  });
+}
+
+['casesTable','electricoTable','sitesTable'].forEach(id=>{
+  makeTableResizable(document.getElementById(id));
+});
 
 switchTab('ERICSSON');
 loadAll(true);
