@@ -417,6 +417,17 @@
   .tk-copy:not(.ticket-shared):hover{ background:rgba(255,255,255,0.08); box-shadow:0 0 0 1px rgba(255,255,255,0.15); }
   .tk-copy.ticket-shared:hover{ filter:brightness(1.25); }
   .tk-copy:active{ transform:scale(0.96); }
+  /* Cierre individual de OTS Sev3 / OTS Sev4 dentro de un mismo registro, sin cerrar toda la fila. */
+  .tk-closed-value{ opacity:.55; text-decoration:line-through; }
+  .tk-partial-btn{
+    display:inline-flex; align-items:center; gap:4px; margin-top:4px;
+    font-size:10px; padding:2px 6px; border-radius:4px; cursor:pointer;
+    background:transparent; border:1px solid var(--line-soft); color:var(--text-faint);
+  }
+  .tk-partial-btn:hover{ border-color:var(--accent); color:var(--accent); }
+  .tk-partial-btn svg{ width:10px; height:10px; }
+  .tk-partial-btn.tk-partial-closed{ border-color:rgba(34,197,94,.4); color:#22c55e; }
+  .tk-partial-btn.tk-partial-closed:hover{ border-color:#22c55e; }
   /* Oculta la columna "Gestor" en las pestañas Ericsson/Huawei (ahí el gestor ya es obvio
      por la pestaña activa); en Cerrados sigue visible porque mezcla ambos gestores. */
   body.hide-gestor-col #casesView table th:nth-child(2),
@@ -2119,7 +2130,24 @@ function renderInner(){
     return [...set.values()];
   }
 
-  function buildRowHtml(r, extraClass){
+  // Botón para cerrar (o reabrir) individualmente OTS Sev 3 u OTS Sev 4 dentro de un mismo
+// registro, sin cerrar todo el registro/fila. Solo tiene sentido cuando el registro tiene
+// AMBOS TK diligenciados (si solo hay uno, cerrarlo equivale a cerrar el registro completo,
+// para eso ya existe el botón "Cerrar registro") y mientras el registro no esté ya CERRADO.
+function tkPartialCloseHtml(r, field, closedField){
+  const value = (r[field]||'').trim();
+  if(!value) return '';
+  if(r.estado === 'CERRADO') return '';
+  const otherField = field === 'otsSev1' ? 'otsSev2' : 'otsSev1';
+  const otherValue = (r[otherField]||'').trim();
+  if(!otherValue) return '';
+  const isClosed = !!r[closedField];
+  return isClosed
+    ? `<button type="button" class="tk-partial-btn tk-partial-closed" data-tk-reopen="${r.id}" data-tk-field="${closedField}" title="Reabrir este TK">${ROW_ICONS.check} Cerrado</button>`
+    : `<button type="button" class="tk-partial-btn" data-tk-close="${r.id}" data-tk-field="${closedField}" title="Cerrar solo este TK, sin cerrar todo el registro">Cerrar TK</button>`;
+}
+
+function buildRowHtml(r, extraClass){
     const cls = ESTADO_CLASS[r.estado] || 'CERRADO';
     const procesoHtml = isProcesoCritico(r.proceso)
       ? `<span class="pill-indisponible">${highlightText(r.proceso, searchTerm)}</span>`
@@ -2144,9 +2172,15 @@ function renderInner(){
           </div>
         </td>
         <td class="mono">${r.gestor === 'HUAWEI' ? 'Huawei' : 'Ericsson'}</td>
-        <td class="mono">${ticketCellHtml(r.otsSev1, sharedOts1Colors, searchTerm)}</td>
+        <td class="mono">
+          <span class="${r.otsSev1Cerrado ? 'tk-closed-value' : ''}">${ticketCellHtml(r.otsSev1, sharedOts1Colors, searchTerm)}</span>
+          ${tkPartialCloseHtml(r, 'otsSev1', 'otsSev1Cerrado')}
+        </td>
         <td class="mono">${dash(r.fechaAlarma)}</td>
-        <td class="mono">${ticketCellHtml(r.otsSev2, sharedOts2Colors, searchTerm)}</td>
+        <td class="mono">
+          <span class="${r.otsSev2Cerrado ? 'tk-closed-value' : ''}">${ticketCellHtml(r.otsSev2, sharedOts2Colors, searchTerm)}</span>
+          ${tkPartialCloseHtml(r, 'otsSev2', 'otsSev2Cerrado')}
+        </td>
         <td class="mono">${ticketCellHtml(r.tpChange, sharedTpChangeColors, searchTerm)}</td>
         <td class="mono"><span class="id-cell ${getIdColorClass(r)}" style="font-weight:600;" data-id-menu="${r.id}" title="Clic para cambiar el estado eléctrico del sitio">${dashHl(r.serviceId, searchTerm)}</span></td>
         <td class="obs-text">${dash(r.nombreSitio)}</td>
@@ -2194,7 +2228,7 @@ function renderInner(){
     const tkPending = tkSharing.filter(x=>x.estado!=='CERRADO');
     const tkExtra = tkSharing.length - groupRecords.length; // cuántos vienen de FUERA de este envío masivo
     return `
-      <tr class="est-${cls} masivo-group-row" data-group="${groupKey}">
+      <tr class="est-${cls} masivo-group-row" data-group="${groupKey}" title="Doble clic para editar todo el lote (agregar sitios, cambiar OTS/TP, etc.)">
         <td>
           <div class="estado-cell">
             ${commonEstado ? badgeHtml(commonEstado) : '<span class="masivo-mixed">Varios</span>'}
@@ -2270,6 +2304,11 @@ function renderInner(){
     });
     tr.addEventListener('dblclick', (e)=>{
       if(e.target.closest('button')) return; // no interferir con copiar/eliminar/expandir
+      const gkey = tr.dataset.group;
+      if(gkey && tr.classList.contains('masivo-group-row')){
+        openMasivoGroupModal(gkey);
+        return;
+      }
       const id = tr.dataset.id;
       if(id) openModal(id);
     });
@@ -2345,6 +2384,32 @@ function renderInner(){
       render();
       await saveRecords();
       showToast('Registro reabierto');
+    });
+  });
+  queryAllIn(touchedRows, '[data-tk-close]').forEach(btn=>{
+    btn.addEventListener('click', async (e)=>{
+      e.stopPropagation();
+      const id = btn.dataset.tkClose;
+      const field = btn.dataset.tkField;
+      const rec = records.find(r=>r.id===id);
+      if(!rec) return;
+      rec[field] = true;
+      render();
+      await saveRecords();
+      showToast('TK cerrado (el registro sigue abierto)');
+    });
+  });
+  queryAllIn(touchedRows, '[data-tk-reopen]').forEach(btn=>{
+    btn.addEventListener('click', async (e)=>{
+      e.stopPropagation();
+      const id = btn.dataset.tkReopen;
+      const field = btn.dataset.tkField;
+      const rec = records.find(r=>r.id===id);
+      if(!rec) return;
+      rec[field] = false;
+      render();
+      await saveRecords();
+      showToast('TK reabierto');
     });
   });
   queryAllIn(touchedRows, '[data-salida]').forEach(btn=>{
@@ -3014,7 +3079,9 @@ async function exportToCSV(){
   const gestor = currentGestor();
   let list;
   if(isCerradosTab) list = records.filter(r => r.estado === 'CERRADO');
-  else if(isIngresosTab) list = records.filter(r => r.estado === 'INGRESO' || r.estado === 'SALIDA');
+  else if(isIngresosTab) list = ingresosSubFilter === 'SALIDAS'
+    ? records.filter(r => r.estado === 'SALIDA')
+    : records.filter(r => r.estado === 'INGRESO');
   else list = records.filter(r => (r.gestor||'ERICSSON') === gestor && r.estado !== 'CERRADO' && r.estado !== 'INGRESO' && r.estado !== 'SALIDA');
   if(list.length === 0){
     showToast(isCerradosTab ? 'No hay registros cerrados para exportar' : (isIngresosTab ? 'No hay registros en ingreso para exportar' : 'No hay registros para exportar en esta pestaña'), 'info');
@@ -3921,6 +3988,12 @@ function openModal(id, readOnly){
       if(idx >= 0) list[idx] = updated; else list.push(updated);
     });
     closeModal();
+    // si el registro quedó en SALIDA (ya sea por el botón dedicado o porque se
+    // cambió el estado manualmente en el formulario), el sub-filtro de la pestaña
+    // Ingresos debe quedar en "Salidas" para que se vea de inmediato; si quedó en
+    // INGRESO, en "Ingresos" — así nunca desaparece detrás del filtro contrario.
+    if(updated.estado === 'INGRESO') ingresosSubFilter = 'INGRESOS';
+    else if(updated.estado === 'SALIDA') ingresosSubFilter = 'SALIDAS';
     switchTab(openedFromTab === 'ELECTRICO' ? 'ELECTRICO' : (updated.estado === 'CERRADO' ? 'CERRADOS' : ((updated.estado === 'INGRESO' || updated.estado === 'SALIDA') ? 'INGRESOS' : (gestor === 'HUAWEI' ? 'HUAWEI' : 'ERICSSON'))));
     showToast(editingId ? 'Cambios guardados' : 'Registro creado');
     // la relectura/reconciliación con el servidor (para no pisar cambios de otro
@@ -3938,6 +4011,213 @@ function closeModal(){
   isModalOpen = false;
   editingId = null;
 }
+
+/* ---------------- MASIVO GROUP MODAL (editar un lote MASIVO completo) ---------------- */
+// A diferencia de openModal(id), que edita un único registro y "separaría" a un sitio nuevo
+// del resto del lote, este modal edita de una vez los campos compartidos de TODO el lote
+// (OTS Sev3/4, TP Change, fecha, proceso, observación) y permite agregar Service ID nuevos
+// a cualquiera de sus categorías sin perder los que ya existían.
+function openMasivoGroupModal(groupKey){
+  const groupRecords = records.filter(r => getMasivoGroupKey(r) === groupKey);
+  if(groupRecords.length === 0) return;
+  isModalOpen = true;
+  editingId = null;
+
+  const first = groupRecords[0];
+  const gestor = first.gestor === 'HUAWEI' ? 'HUAWEI' : 'ERICSSON';
+  const commonEstado = groupRecords.every(x=>x.estado===first.estado) ? first.estado : '';
+
+  const GROUP_MASIVO_CATS = [
+    { key:'BATERIAS', label:'EN BATERIAS', title:'🔋 En Baterías' },
+    { key:'GENERADOR', label:'EN GENERADOR', title:'⚙️ En Generador' },
+    { key:'CAIDA', label:'CAIDA DIRECTA', title:'⚡ Caída Directa' },
+    { key:'CHANGE', label:'CHANGE', title:'🔧 Change' }
+  ];
+  GROUP_MASIVO_CATS.forEach(c=>{
+    c.existingRecords = groupRecords.filter(r => r.categoria === c.label);
+    c.existingIds = c.existingRecords.map(r => r.serviceId).filter(Boolean);
+  });
+
+  function parseServiceIdList(raw){
+    const seen = new Set();
+    const out = [];
+    (raw||'').split(',').map(s=>s.trim()).filter(s=>s!=='').forEach(id=>{
+      const key = id.toLowerCase();
+      if(!seen.has(key)){ seen.add(key); out.push(id); }
+    });
+    return out;
+  }
+
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay';
+  overlay.id = 'overlay';
+  overlay.innerHTML = `
+    <div class="modal">
+      <div class="modal-header">
+        <h2>Editar lote masivo (${groupRecords.length} Service ID)</h2>
+        <button type="button" class="modal-close-btn" id="modalCloseX" title="Cerrar">✕</button>
+      </div>
+      <p class="hint" style="background:var(--panel-2); border:1px solid var(--line); border-radius:8px; padding:10px 12px; margin-top:-8px;">
+        Estos campos aplican a todo el lote a la vez. Para agregar sitios nuevos, escríbelos separados por coma en la categoría correspondiente — los que ya estaban se conservan.
+      </p>
+      <div class="form-grid">
+        <div>
+          <label>Estado</label>
+          <select id="gm_estado">
+            <option value="" ${commonEstado === '' ? 'selected' : ''}>— No cambiar (el lote tiene estados distintos) —</option>
+            ${ESTADOS.map(e=>`<option value="${e}" ${commonEstado===e?'selected':''}>${e}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label>Fecha de la alarma</label>
+          <input type="date" id="gm_fecha" value="${escapeHtml(first.fechaAlarma||'')}" />
+        </div>
+        <div>
+          <label>OTS Sev 3</label>
+          <input type="text" id="gm_otsSev1" value="${escapeHtml(first.otsSev1||'')}" inputmode="numeric" />
+        </div>
+        <div>
+          <label>OTS Sev 4</label>
+          <input type="text" id="gm_otsSev2" value="${escapeHtml(first.otsSev2||'')}" inputmode="numeric" />
+        </div>
+        <div>
+          <label>TP Change</label>
+          <input type="text" id="gm_tpChange" value="${escapeHtml(first.tpChange||'')}" inputmode="numeric" />
+        </div>
+        <div class="full" style="margin-top:-8px;">
+          <span style="font-size:11px; color:var(--text-faint);">⚠ Debe quedar diligenciado al menos uno de estos 3 campos (OTS Sev 3, OTS Sev 4 o TP Change), solo con números.</span>
+        </div>
+        <div class="full">
+          <label>Proceso</label>
+          <select id="gm_proceso">
+            <option value="" ${!first.proceso ? 'selected' : ''}>— Seleccionar —</option>
+            ${PROCESO_OPTIONS.map(opt => `<option value="${escapeHtml(opt)}" ${first.proceso===opt ? 'selected' : ''}>${escapeHtml(opt)}</option>`).join('')}
+            ${(first.proceso && !PROCESO_OPTIONS.includes(first.proceso)) ? `<option value="${escapeHtml(first.proceso)}" selected>${escapeHtml(first.proceso)}</option>` : ''}
+          </select>
+        </div>
+        <div class="full">
+          <label>Observación</label>
+          <textarea id="gm_observacion">${escapeHtml(first.observacion||'')}</textarea>
+        </div>
+        <div class="full">
+          <label>Sitios del lote (por categoría)</label>
+          ${GROUP_MASIVO_CATS.map(c => `
+            <div class="masivo-cat-box" data-cat="${c.label}">
+              <button type="button" class="masivo-btn ${c.existingIds.length ? 'active-tipo' : ''}" disabled style="cursor:default;">${c.title}${c.existingIds.length ? ` (${c.existingIds.length} ya en el lote)` : ' (sin sitios aún)'}</button>
+              <div class="masivo-ids">
+                <label>Service ID</label>
+                <input type="text" id="gm_ids_${c.key}" list="siteIdList" value="${escapeHtml(c.existingIds.join(', '))}" placeholder="PA213 (o pega varios: BT200, AU101, AU501)" />
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+      <div class="modal-actions">
+        <div></div>
+        <div class="modal-actions-right">
+          <button class="btn-ghost" id="modalCancel">Cancelar</button>
+          <button class="btn-primary" id="modalSave">Guardar cambios</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  document.getElementById('modalCloseX').onclick = closeModal;
+  document.getElementById('modalCancel').onclick = closeModal;
+  overlay.addEventListener('click', (e)=>{ if(e.target === overlay) closeModal(); });
+
+  document.getElementById('modalSave').onclick = async ()=>{
+    const sharedEstado = document.getElementById('gm_estado').value;
+    const sharedFecha = document.getElementById('gm_fecha').value;
+    const sharedOtsSev1 = document.getElementById('gm_otsSev1').value.trim();
+    const sharedOtsSev2 = document.getElementById('gm_otsSev2').value.trim();
+    const sharedTpChange = document.getElementById('gm_tpChange').value.trim();
+    const sharedProceso = document.getElementById('gm_proceso').value.trim();
+    const sharedObservacion = document.getElementById('gm_observacion').value.trim();
+
+    const tkFields = [
+      { label: 'OTS Sev 3', value: sharedOtsSev1, el: document.getElementById('gm_otsSev1') },
+      { label: 'OTS Sev 4', value: sharedOtsSev2, el: document.getElementById('gm_otsSev2') },
+      { label: 'TP Change', value: sharedTpChange, el: document.getElementById('gm_tpChange') },
+    ];
+    const tkFilled = tkFields.filter(f => f.value !== '');
+    if(tkFilled.length === 0){
+      showToast('Debes diligenciar al menos un TK: OTS Sev 3, OTS Sev 4 o TP Change', 'info');
+      tkFields[0].el.focus();
+      return;
+    }
+    const tkNoNumerico = tkFilled.find(f => !/^\d+$/.test(f.value));
+    if(tkNoNumerico){
+      showToast(`${tkNoNumerico.label} debe contener solo números`, 'info');
+      tkNoNumerico.el.focus();
+      return;
+    }
+
+    // Normaliza el grupo a un masivoGroupId explícito (por si venía de un grupo "legacy" sin
+    // este campo), para que siga agrupando correctamente incluso tras cambiar los campos compartidos.
+    let effectiveGroupId = first.masivoGroupId;
+    if(!effectiveGroupId){
+      effectiveGroupId = uid();
+      groupRecords.forEach(r => { r.masivoGroupId = effectiveGroupId; });
+    }
+
+    groupRecords.forEach(r=>{
+      if(sharedEstado) r.estado = sharedEstado;
+      r.fechaAlarma = sharedFecha;
+      r.otsSev1 = sharedOtsSev1;
+      r.otsSev2 = sharedOtsSev2;
+      r.tpChange = sharedTpChange;
+      r.proceso = sharedProceso;
+      r.observacion = sharedObservacion;
+      r.teams = generateTeamsText({
+        otsSev1: sharedOtsSev1, serviceId: r.serviceId, otsSev2: sharedOtsSev2,
+        nombreSitio: r.nombreSitio, categoria: r.categoria, proceso: sharedProceso, observacion: sharedObservacion
+      });
+    });
+
+    // Agrega los Service ID nuevos escritos en cada categoría; los que ya existían no se tocan.
+    const newRecs = [];
+    GROUP_MASIVO_CATS.forEach(c=>{
+      const input = document.getElementById('gm_ids_' + c.key);
+      const ids = parseServiceIdList(input.value);
+      const existingKeys = new Set(c.existingIds.map(id => id.toLowerCase()));
+      ids.filter(id => !existingKeys.has(id.toLowerCase())).forEach(sid=>{
+        const site = lookupSiteById(sid);
+        const nombreSitio = site ? (site.siteName||'') : '';
+        const vipVal = site ? (normalizeVip(site.vip) || 'NO') : 'NO';
+        const seguridadVal = site ? (normalizeVip(site.seguridad) || '') : '';
+        const teamsVal = generateTeamsText({
+          otsSev1: sharedOtsSev1, serviceId: sid, otsSev2: sharedOtsSev2,
+          nombreSitio, categoria: c.label, proceso: sharedProceso, observacion: sharedObservacion
+        });
+        newRecs.push({
+          id: uid(), gestor, estado: sharedEstado || first.estado,
+          otsSev1: sharedOtsSev1, fechaAlarma: sharedFecha, otsSev2: sharedOtsSev2, tpChange: sharedTpChange,
+          serviceId: sid, nombreSitio, categoria: c.label, tipoProceso: 'MASIVO', masivoGroupId: effectiveGroupId,
+          proceso: sharedProceso, observacion: sharedObservacion,
+          vip: vipVal, seguridad: seguridadVal, teams: teamsVal,
+          reporteElectrico: first.reporteElectrico || false,
+          reporteElectricoEnviado: false, reporteElectricoTexto:'', reporteElectricoProveedor:'', reporteElectricoEstado:'',
+          reporteElectricoCreatedAt: first.reporteElectrico ? Date.now() : null,
+          reporteElectricoSeguimientoAt: null,
+          seguimientoSolicitado: false, seguimientoSolicitadoAt: null, seguimientoSolicitadoAtendido: false,
+          seguimientoSolicitadoCount: 0, seguimientoTexto: '',
+          createdAt: Date.now()
+        });
+      });
+    });
+    newRecs.forEach(nr => records.push(nr));
+
+    closeModal();
+    render();
+    await saveRecords();
+    showToast(newRecs.length > 0
+      ? `Lote actualizado — ${newRecs.length} sitio${newRecs.length===1?'':'s'} nuevo${newRecs.length===1?'':'s'} agregado${newRecs.length===1?'':'s'}`
+      : 'Lote actualizado');
+  };
+}
+
 
 /* ---------------- SITE MODAL ---------------- */
 
