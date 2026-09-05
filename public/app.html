@@ -328,6 +328,20 @@
   thead th .sort-ind{ display:inline-block; margin-left:4px; opacity:0.35; font-size:9px; }
   thead th.sortable.sort-active{ color:var(--accent); }
   thead th.sortable.sort-active .sort-ind{ opacity:1; }
+
+  /* handle para ajustar el ancho de las columnas arrastrando el borde derecho */
+  table.col-resizable{ table-layout:fixed; }
+  thead th .col-resizer{
+    position:absolute; top:0; right:0; bottom:0; width:8px;
+    cursor:col-resize; z-index:6; touch-action:none;
+  }
+  thead th .col-resizer::after{
+    content:''; position:absolute; top:0; bottom:0; right:3px; width:2px;
+    background:transparent; transition:background .12s ease;
+  }
+  thead th .col-resizer:hover::after,
+  thead th .col-resizer.resizing::after{ background:var(--accent); }
+  thead th{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   mark.search-hit{
     background:var(--accent); color:#04140f; border-radius:3px; padding:0 2px;
     font-weight:700; box-decoration-break:clone; -webkit-box-decoration-break:clone;
@@ -916,7 +930,7 @@
         <input class="search" id="searchInput" placeholder="Buscar por Service ID, OTS, observación, proceso…" />
       </div>
       <div class="table-scroll">
-        <table>
+        <table id="casesTable">
           <thead>
             <tr>
               <th class="sortable" data-sort="estado">Estado<span class="sort-ind"></span></th>
@@ -956,7 +970,7 @@
         <button class="btn-ghost" id="electricoExportBtn" style="margin-left:auto;">⬇ Exportar Excel</button>
       </div>
       <div class="table-scroll">
-        <table>
+        <table id="electricoTable">
           <thead>
             <tr>
               <th>Aviso</th>
@@ -1000,7 +1014,7 @@
       </div>
       <p class="hint" style="margin:-4px 0 10px; font-size:11px;">🔒 Importar Excel, editar y eliminar sitios existentes requieren código de administrador. Cualquier gestor puede agregar sitios nuevos con "+ Agregar sitio".</p>
       <div class="table-scroll">
-        <table class="sites-table">
+        <table class="sites-table" id="sitesTable">
           <thead>
             <tr>
               <th>Id</th>
@@ -4236,6 +4250,80 @@ document.addEventListener('click', async (e)=>{
   if(!value) return;
   const ok = await copyTextToClipboard(value);
   showToast(ok ? `TK ${value} copiado al portapapeles` : 'No se pudo copiar el TK', ok ? 'success' : 'error');
+});
+
+/* ---------------- COLUMNAS AJUSTABLES (arrastrar el borde derecho de cada encabezado) ----------------
+   El ancho elegido se recuerda por gestor (como el tema), no se comparte con los demás. */
+async function saveColumnWidths(tableKey, widths){
+  try{ await window.storage.set(`col-widths:${tableKey}`, JSON.stringify(widths), false); }
+  catch(e){ /* preferencia de ancho no crítica: si falla, simplemente no se recuerda */ }
+}
+
+async function loadColumnWidths(tableKey){
+  try{
+    const res = await window.storage.get(`col-widths:${tableKey}`, false);
+    const widths = JSON.parse(res.value);
+    return Array.isArray(widths) ? widths : null;
+  }catch(e){ return null; }
+}
+
+async function makeTableResizable(table){
+  if(!table || table.dataset.resizableInit) return;
+  table.dataset.resizableInit = '1';
+  const tableKey = table.id;
+  const ths = Array.from(table.querySelectorAll('thead th'));
+  if(ths.length === 0) return;
+
+  // aplica anchos guardados de una sesión anterior, si existen
+  const saved = tableKey ? await loadColumnWidths(tableKey) : null;
+  if(saved && saved.length === ths.length){
+    table.classList.add('col-resizable');
+    ths.forEach((th,i)=>{ if(saved[i]) th.style.width = saved[i] + 'px'; });
+  }
+
+  ths.forEach((th, idx)=>{
+    const resizer = document.createElement('span');
+    resizer.className = 'col-resizer';
+    resizer.addEventListener('click', e=> e.stopPropagation()); // no disparar el ordenamiento de la columna
+    th.appendChild(resizer);
+
+    resizer.addEventListener('mousedown', (e)=>{
+      e.preventDefault();
+      e.stopPropagation();
+      const startX = e.clientX;
+      // fija el ancho actual de TODAS las columnas antes de pasar a layout fijo,
+      // para que ninguna otra columna "salte" al iniciar el arrastre
+      const startWidths = ths.map(t=> t.getBoundingClientRect().width);
+      table.classList.add('col-resizable');
+      ths.forEach((t,i)=>{ t.style.width = startWidths[i] + 'px'; });
+      resizer.classList.add('resizing');
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+
+      function onMove(ev){
+        const delta = ev.clientX - startX;
+        const newWidth = Math.max(50, startWidths[idx] + delta);
+        th.style.width = newWidth + 'px';
+      }
+      function onUp(){
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        resizer.classList.remove('resizing');
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        if(tableKey){
+          const widths = ths.map(t=> Math.round(t.getBoundingClientRect().width));
+          saveColumnWidths(tableKey, widths);
+        }
+      }
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+  });
+}
+
+['casesTable','electricoTable','sitesTable'].forEach(id=>{
+  makeTableResizable(document.getElementById(id));
 });
 
 switchTab('ERICSSON');
