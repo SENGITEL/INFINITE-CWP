@@ -1387,13 +1387,24 @@ function showToast(msg, type){
 // si falla o no está disponible (páginas sin HTTPS, sin foco, permisos bloqueados, etc.)
 // usa un método de respaldo con un textarea temporal y document.execCommand('copy'),
 // que funciona en muchos más entornos.
-async function copyTextToClipboard(text){
+// Si se pasa `html`, además del texto plano se copia una versión HTML (texto enriquecido);
+// así, al pegar en Teams (u otro editor que acepta rich text), se conserva la negrilla real
+// en vez de asteriscos literales.
+async function copyTextToClipboard(text, html){
   if(navigator.clipboard && window.isSecureContext){
     try{
+      if(html && window.ClipboardItem && navigator.clipboard.write){
+        const item = new ClipboardItem({
+          'text/plain': new Blob([text], {type:'text/plain'}),
+          'text/html': new Blob([html], {type:'text/html'})
+        });
+        await navigator.clipboard.write([item]);
+        return true;
+      }
       await navigator.clipboard.writeText(text);
       return true;
     }catch(err){
-      // seguimos al método de respaldo
+      // seguimos al método de respaldo (texto plano)
     }
   }
   try{
@@ -1477,16 +1488,38 @@ async function loadAll(showLoadingText){
       window.storage.get(STORAGE_KEY, true).catch(()=>null),
       window.storage.get(STORAGE_KEY_SITES, true).catch(()=>null)
     ]);
-    const rawRecords = resCases && resCases.value ? resCases.value : '[]';
-    const rawSites = resSites && resSites.value ? resSites.value : '[]';
     lastSyncAt = new Date();
 
-    // solo si algo cambió realmente se vuelve a construir la tabla; así el sondeo
-    // en segundo plano nunca produce un parpadeo/refresco visible cuando no hay novedades
-    const recordsChanged = rawRecords !== lastRecordsRaw;
-    const sitesChanged = rawSites !== lastSitesRaw;
-    if(recordsChanged){ records = JSON.parse(rawRecords); lastRecordsRaw = rawRecords; }
-    if(sitesChanged){ sites = JSON.parse(rawSites); lastSitesRaw = rawSites; }
+    // Antes, si la petición fallaba (caída de red, cold-start de la función serverless,
+    // un 500 pasajero, etc.), el .catch(()=>null) de arriba convertía la falla en `null`,
+    // y la línea siguiente trataba ese `null` exactamente igual que "el servidor respondió
+    // que no hay datos" (`'[]'`). Eso borraba de la pantalla TODO lo que ya se veía —
+    // incluido un registro recién creado — hasta el siguiente sondeo (unos segundos
+    // después) que sí tenía éxito y lo devolvía. Ahora solo se asume "vacío" en la
+    // primerísima carga (cuando de verdad no hay ningún dato previo con qué quedarse);
+    // en cualquier sondeo posterior, si la petición falla, simplemente se deja lo que ya
+    // había en pantalla y se reintenta en el siguiente ciclo, sin parpadear a vacío.
+    const isFirstLoad = lastRecordsRaw === null;
+
+    let recordsChanged = false, sitesChanged = false;
+    if(resCases !== null){
+      const rawRecords = resCases.value ? resCases.value : '[]';
+      recordsChanged = rawRecords !== lastRecordsRaw;
+      if(recordsChanged){ records = JSON.parse(rawRecords); lastRecordsRaw = rawRecords; }
+    } else if(isFirstLoad){
+      recordsChanged = true;
+      records = [];
+      lastRecordsRaw = '[]';
+    }
+    if(resSites !== null){
+      const rawSites = resSites.value ? resSites.value : '[]';
+      sitesChanged = rawSites !== lastSitesRaw;
+      if(sitesChanged){ sites = JSON.parse(rawSites); lastSitesRaw = rawSites; }
+    } else if(isFirstLoad){
+      sitesChanged = true;
+      sites = [];
+      lastSitesRaw = '[]';
+    }
 
     setSync('sincronizado');
     refreshLastUpdatedLabel();
@@ -1747,6 +1780,19 @@ function buildFilterChips(){
 function escapeHtml(s){
   if(s === undefined || s === null) return '';
   return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// Construye una versión HTML del texto de Teams con el/los Service ID en <b>negrilla</b>,
+// para que al pegarlo en Teams (que acepta texto enriquecido) se vea realmente en negrilla,
+// en vez de mostrar asteriscos literales como pasaría con Markdown pegado como texto plano.
+function boldServiceIdsHtml(text, serviceIds){
+  let escaped = escapeHtml(text);
+  (serviceIds||[]).filter(Boolean).forEach(id=>{
+    const escId = escapeHtml(id);
+    const re = new RegExp(escId.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'), 'g');
+    escaped = escaped.replace(re, `<b>${escId}</b>`);
+  });
+  return escaped.replace(/\n/g, '<br>');
 }
 
 function dash(v){
@@ -2290,7 +2336,7 @@ function buildRowHtml(r, extraClass){
         </td>
         <td class="obs-text" style="max-width:260px;">
           ${r.teams
-            ? `<div class="copy-cell"><span class="text-flag" title="${escapeHtml(r.teams)}">Texto</span><button type="button" class="copy-btn" data-copy="${escapeHtml(r.teams)}" title="Copiar">📋</button></div>`
+            ? `<div class="copy-cell"><span class="text-flag" title="${escapeHtml(r.teams)}">Texto</span><button type="button" class="copy-btn" data-copy="${escapeHtml(r.teams)}" data-copy-html="${boldServiceIdsHtml(r.teams, [r.serviceId])}" title="Copiar">📋</button></div>`
             : '<span class="empty-dash">—</span>'}
         </td>
         <td class="obs-text">${dash(r.actividad)}</td>
@@ -2311,6 +2357,7 @@ function buildRowHtml(r, extraClass){
     const siteNames = [...new Set(groupRecords.map(x=>x.nombreSitio).filter(Boolean))];
     const chips = groupRecords.map(x=>`<span class="sid-chip id-cell ${getIdColorClass(x)}" data-id-menu="${x.id}" title="${escapeHtml([x.nombreSitio, x.categoria].filter(Boolean).join(' · '))} — Clic para cambiar el estado eléctrico">${escapeHtml(x.serviceId)}</span>`).join('');
     const allTeams = groupRecords.map(x=>x.teams).filter(Boolean).join('\n\n');
+    const allTeamsHtml = boldServiceIdsHtml(allTeams, groupRecords.map(x=>x.serviceId));
     const tkSharing = closeTkCluster(groupRecords);
     const tkPending = tkSharing.filter(x=>x.estado!=='CERRADO');
     const tkExtra = tkSharing.length - groupRecords.length; // cuántos vienen de FUERA de este envío masivo
@@ -2350,7 +2397,7 @@ function buildRowHtml(r, extraClass){
         <td class="mono"><span class="empty-dash">—</span></td>
         <td class="obs-text"><span class="empty-dash">—</span></td>
         <td class="obs-text" style="max-width:260px;">
-          ${allTeams ? `<button type="button" class="copy-btn" data-copy="${escapeHtml(allTeams)}" title="Copiar todos">📋 Copiar todos</button>` : '<span class="empty-dash">—</span>'}
+          ${allTeams ? `<button type="button" class="copy-btn" data-copy="${escapeHtml(allTeams)}" data-copy-html="${allTeamsHtml}" title="Copiar todos">📋 Copiar todos</button>` : '<span class="empty-dash">—</span>'}
         </td>
         <td><span class="empty-dash">—</span></td>
         <td><span class="empty-dash">—</span></td>
@@ -2410,7 +2457,8 @@ function buildRowHtml(r, extraClass){
     btn.addEventListener('click', async (e)=>{
       e.stopPropagation();
       const text = btn.dataset.copy;
-      const ok = await copyTextToClipboard(text);
+      const html = btn.dataset.copyHtml;
+      const ok = await copyTextToClipboard(text, html);
       if(ok){
         showToast('Copiado al portapapeles');
       }else{
@@ -2756,7 +2804,8 @@ function renderElectrico(){
     btn.addEventListener('click', async (e)=>{
       e.stopPropagation();
       const text = btn.dataset.copy;
-      const ok = await copyTextToClipboard(text);
+      const html = btn.dataset.copyHtml;
+      const ok = await copyTextToClipboard(text, html);
       if(ok){
         showToast('Copiado al portapapeles');
       }else{
