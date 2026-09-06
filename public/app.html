@@ -1486,6 +1486,20 @@ async function loadAll(showLoadingText){
 }
 
 async function saveRecords(){
+  // isCommitting se activa aquí mismo (no solo en commitRecordsChange) porque
+  // hay muchas acciones rápidas (escalar, cambiar estado eléctrico, cerrar
+  // caso, registrar salida, etc.) que mutan `records` y llaman a esta función
+  // directamente. Antes, durante el viaje de red de esas acciones, el sondeo
+  // en segundo plano no estaba bloqueado: si llegaba a mitad de camino, leía
+  // del servidor la versión todavía vieja (la de esta acción aún no se había
+  // guardado) y pisaba en pantalla el cambio que la persona ya había visto
+  // aplicado — se sentía como un salto de vuelta al estado anterior. Y como
+  // nada volvía a pintar la pantalla una vez el guardado sí terminaba bien,
+  // el valor correcto solo aparecía hasta el siguiente ciclo de sondeo.
+  // Al activar isCommitting desde el primer renglón (antes de cualquier
+  // "await"), ningún sondeo puede colarse mientras este guardado esté en
+  // vuelo, sin tener que tocar cada uno de esos lugares por separado.
+  isCommitting = true;
   // el indicador de arriba ahora también refleja TU guardado (no solo el sondeo en
   // segundo plano): "guardando…" mientras se escribe, "guardado" cuando termina.
   setSync('guardando…', 'saving');
@@ -1499,10 +1513,15 @@ async function saveRecords(){
   }catch(e){
     setSync('error al guardar', 'error');
     showToast('Error guardando. Intenta de nuevo.', 'error');
+  } finally {
+    isCommitting = false;
   }
 }
 
 async function saveSites(){
+  // mismo motivo que en saveRecords(): protege también a quienes llaman a
+  // saveSites() directamente, sin pasar por commitSitesChange.
+  isCommitting = true;
   setSync('guardando…', 'saving');
   try{
     const raw = JSON.stringify(sites);
@@ -1514,6 +1533,8 @@ async function saveSites(){
   }catch(e){
     setSync('error al guardar', 'error');
     showToast('Error guardando la base de sitios.', 'error');
+  } finally {
+    isCommitting = false;
   }
 }
 
