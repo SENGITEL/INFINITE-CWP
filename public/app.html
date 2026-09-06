@@ -1645,6 +1645,21 @@ function findIngresoActivoPorServiceId(serviceId, excludeId){
   ) || null;
 }
 
+// Estados de OTS "en curso" (ni INGRESO/SALIDA ni CERRADO): si el Service ID que se está
+// diligenciando ya aparece en un registro con uno de estos estados, es que ese sitio ya
+// tiene un OTS abierto en otro caso y conviene avisarlo antes de crear uno nuevo por error.
+const ESTADOS_OTS_EN_CURSO = ['TP (CHANGE)', 'EN GESTION', 'PENDIENTE POR CIERRE', 'ESCALADO A IP', 'ESCALADO A DWDM'];
+function findOtsAsociadoPorServiceId(serviceId, excludeId){
+  if(!serviceId) return null;
+  const q = serviceId.trim().toLowerCase();
+  if(q === '') return null;
+  return records.find(rec =>
+    ESTADOS_OTS_EN_CURSO.includes(rec.estado) &&
+    rec.id !== excludeId &&
+    (rec.serviceId||'').trim().toLowerCase() === q
+  ) || null;
+}
+
 function normalizeVip(v){
   const s = String(v||'').trim().toUpperCase();
   if(['SI','SÍ','SI.','S','YES','TRUE','1'].includes(s)) return 'SI';
@@ -3360,6 +3375,7 @@ function openModal(id, readOnly){
           </div>
           <div id="siteHintBox"></div>
           <div id="ingresoActivoHintBox"></div>
+          <div id="otsAsociadoHintBox"></div>
         </div>
         <div class="full" id="ingresoFieldsBox" style="${(r.estado==='INGRESO' || r.estado==='SALIDA') ? '' : 'display:none;'}">
           <div class="unico-grid">
@@ -3517,6 +3533,13 @@ function openModal(id, readOnly){
         ? `<div class="site-name-hint ingreso-alert">⚠ Hay un ingreso activo en esta RBS${roActivo.fechaAlarma ? ` (desde ${escapeHtml(roActivo.fechaAlarma)})` : ''}${roActivo.contacto ? ` · Contacto: ${escapeHtml(roActivo.contacto)}` : ''}</div>`
         : '';
     }
+    const roOtsAsociadoBox = document.getElementById('otsAsociadoHintBox');
+    if(roOtsAsociadoBox){
+      const roOtsAsociado = findOtsAsociadoPorServiceId(r.serviceId, r.id);
+      roOtsAsociadoBox.innerHTML = roOtsAsociado
+        ? `<div class="site-name-hint ingreso-alert">⚠ Este Service ID ya se encuentra asociado a un OTS (estado: ${escapeHtml(roOtsAsociado.estado)}${roOtsAsociado.otsSev1 ? ` · OTS Sev3: ${escapeHtml(roOtsAsociado.otsSev1)}` : ''}${roOtsAsociado.otsSev2 ? ` · OTS Sev4: ${escapeHtml(roOtsAsociado.otsSev2)}` : ''})</div>`
+        : '';
+    }
     document.getElementById('modalCancel').onclick = closeModal;
     document.getElementById('modalCloseX').onclick = closeModal;
     return;
@@ -3655,6 +3678,7 @@ function openModal(id, readOnly){
   const nombreInput = document.getElementById('f_nombre');
   const siteHintBox = document.getElementById('siteHintBox');
   const ingresoActivoHintBox = document.getElementById('ingresoActivoHintBox');
+  const otsAsociadoHintBox = document.getElementById('otsAsociadoHintBox');
 
   function updateIngresoActivoHint(){
     const val = serviceIdInput.value.trim();
@@ -3666,6 +3690,22 @@ function openModal(id, readOnly){
       ingresoActivoHintBox.innerHTML = `<div class="site-name-hint ingreso-alert">⚠ Hay un ingreso activo en esta RBS${cuando}${quien}</div>`;
     } else {
       ingresoActivoHintBox.innerHTML = '';
+    }
+  }
+
+  // Igual que el aviso de "ingreso activo", pero para el otro caso que se puede pasar
+  // por alto al crear un registro nuevo: que ese mismo Service ID ya tenga un OTS en
+  // curso (TP Change, En Gestión, Pendiente por cierre o Escalado a IP/DWDM) en OTRO
+  // registro. Se avisa apenas se escribe el Service ID, antes de guardar.
+  function updateOtsAsociadoHint(){
+    const val = serviceIdInput.value.trim();
+    if(val === ''){ otsAsociadoHintBox.innerHTML = ''; return; }
+    const asociado = findOtsAsociadoPorServiceId(val, editingId);
+    if(asociado){
+      const otsTxt = [asociado.otsSev1 && `OTS Sev3: ${escapeHtml(asociado.otsSev1)}`, asociado.otsSev2 && `OTS Sev4: ${escapeHtml(asociado.otsSev2)}`].filter(Boolean).join(' · ');
+      otsAsociadoHintBox.innerHTML = `<div class="site-name-hint ingreso-alert">⚠ Este Service ID ya se encuentra asociado a un OTS (estado: ${escapeHtml(asociado.estado)}${otsTxt ? ` · ${otsTxt}` : ''})</div>`;
+    } else {
+      otsAsociadoHintBox.innerHTML = '';
     }
   }
 
@@ -3708,10 +3748,11 @@ function openModal(id, readOnly){
   }
 
   // al escribir el Service ID, autocompleta Nombre y VIP; al abrir para editar, solo muestra el estado sin pisar datos ya guardados
-  serviceIdInput.addEventListener('input', ()=> { updateSiteHint(true); updateIngresoActivoHint(); });
+  serviceIdInput.addEventListener('input', ()=> { updateSiteHint(true); updateIngresoActivoHint(); updateOtsAsociadoHint(); });
   nombreInput.addEventListener('change', tryMatchByNombre);
   updateSiteHint(false);
   updateIngresoActivoHint();
+  updateOtsAsociadoHint();
   refreshTipoProcesoUI();
 
   const reporteElectricoCb = document.getElementById('f_reporteElectrico');
