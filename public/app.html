@@ -92,13 +92,14 @@
   body.theme-light #electricoModeActivos.active,
   body.theme-light #electricoModeCerrados.active{ color:#ffffff; }
 
-  /* cross-fade corto y suave para las actualizaciones de tabla (evita el parpadeo/salto
-     al sincronizar); en navegadores sin soporte de View Transitions esto simplemente no aplica */
+  /* Sin animación en la transición de página completa: reconcileTbody() ya reemplaza en
+     el DOM únicamente las filas que de verdad cambiaron, así que no hace falta (ni conviene)
+     mezclar dos fotos de LA PÁGINA ENTERA en cada actualización — ese mezclado (crossfade)
+     de dos capturas casi idénticas es lo que se sentía como parpadeo, incluso cuando el
+     cambio real era de una sola celda. Al dejar esto en "none", el cambio en la fila
+     afectada se ve al instante y quirúrgico, sin ningún parpadeo de pantalla completa. */
   ::view-transition-old(root),
-  ::view-transition-new(root){ animation-duration: 140ms; }
-  @media (prefers-reduced-motion: reduce){
-    ::view-transition-old(root), ::view-transition-new(root){ animation: none; }
-  }
+  ::view-transition-new(root){ animation: none; }
 
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;background:transparent;color:var(--text);font-family:var(--font-ui);}
@@ -2817,9 +2818,17 @@ function renderElectrico(){
     trackInlineEditing(sel);
     sel.addEventListener('change', async (e)=>{
       const id = sel.dataset.estadoreporte;
+      const rec = records.find(x => x.id === id);
+      const serviceIdTxt = rec ? rec.serviceId : '';
       await touchSeguimiento(id, rec => { rec.reporteElectricoEstado = sel.value; });
       render();
-      showToast('Estado de reporte actualizado');
+      // Aviso específico al cerrar (no solo "estado actualizado" genérico), para que
+      // quede claro en el momento que ese reporte eléctrico en particular ya se cerró.
+      if(sel.value === 'CERRADO'){
+        showToast(`Reporte eléctrico cerrado${serviceIdTxt ? ` (${serviceIdTxt})` : ''}`, 'success');
+      } else {
+        showToast('Estado de reporte actualizado');
+      }
     });
   });
   queryAllIn(touchedRows, '[data-unflag]').forEach(btn=>{
