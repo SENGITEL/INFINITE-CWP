@@ -701,6 +701,9 @@
     white-space:nowrap; transition:.12s ease; margin-top:4px;
   }
   .masivo-toggle-btn:hover{ border-color:var(--accent); }
+  .masivo-toggle-btn.masivo-toggle-icon{
+    padding:2px 8px; font-size:12px; line-height:1;
+  }
   .close-tk-btn{
     background:rgba(34,197,94,.12); color:#22c55e; border:1px solid rgba(34,197,94,.35);
     border-radius:6px; padding:4px 9px; font-family:var(--font-mono); font-size:10.5px; font-weight:700;
@@ -2299,12 +2302,12 @@ function buildRowHtml(r, extraClass){
         <td class="mono">${first.gestor === 'HUAWEI' ? 'Huawei' : 'Ericsson'}</td>
         <td class="mono">
           ${ticketCellHtml(first.otsSev1, sharedOts1Colors, searchTerm)}
-          <div><button type="button" class="masivo-toggle-btn" data-toggle-group="${groupKey}" title="Ver/editar registros individuales">Expandir</button></div>
+          <div><button type="button" class="masivo-toggle-btn masivo-toggle-icon" data-toggle-group="${groupKey}" title="Ver/editar registros individuales">▾</button></div>
         </td>
         <td class="mono">${dash(first.fechaAlarma)}</td>
         <td class="mono">
           ${ticketCellHtml(first.otsSev2, sharedOts2Colors, searchTerm)}
-          <div><button type="button" class="masivo-toggle-btn" data-toggle-group="${groupKey}" title="Ver/editar registros individuales">Expandir</button></div>
+          <div><button type="button" class="masivo-toggle-btn masivo-toggle-icon" data-toggle-group="${groupKey}" title="Ver/editar registros individuales">▾</button></div>
         </td>
         <td class="mono">${ticketCellHtml(first.tpChange, sharedTpChangeColors, searchTerm)}</td>
         <td class="mono">
