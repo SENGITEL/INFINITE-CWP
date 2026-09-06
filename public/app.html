@@ -300,6 +300,7 @@
   .chip[data-estado="ESCALADO A IP"].active{ background:var(--escip); }
   .chip[data-estado="ESCALADO A DWDM"].active{ background:var(--escdwdm); }
   .chip[data-estado="SEGUIMIENTO"].active{ background:var(--seguimiento); }
+  .chip.chip-ingreso-toggle.active{ background:var(--seguimiento); }
   .search{
     flex:1; min-width:180px; background:var(--panel-2); border:1px solid var(--line);
     border-radius:8px; padding:9px 13px; color:var(--text); font-size:13px; font-family:var(--font-ui);
@@ -1693,7 +1694,7 @@ function buildFilterChips(){
     // intermedio de "todos mezclados" que haga sentir el filtro invertido o inconsistente.
     [{key:'INGRESOS', label:'Ingresos'}, {key:'SALIDAS', label:'Salidas'}].forEach(o=>{
       const chip = document.createElement('div');
-      chip.className = 'chip' + (ingresosSubFilter === o.key ? ' active' : '');
+      chip.className = 'chip chip-ingreso-toggle' + (ingresosSubFilter === o.key ? ' active' : '');
       chip.textContent = o.label;
       chip.onclick = ()=>{
         ingresosSubFilter = o.key;
