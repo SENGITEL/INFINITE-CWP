@@ -1838,11 +1838,33 @@ function updateSortIndicators(){
 //      parpadeo brusco de "borra todo y vuelve a pintar". En navegadores que
 //      no la soportan, simplemente se dibuja igual que antes (sin romper
 //      nada).
+// ---------------------------------------------------------------------------
+// Ancla el scroll a una FILA concreta (por su data-id/data-group/data-siteid),
+// no a un valor de scrollTop en píxeles. Antes, si el sondeo automático traía
+// un registro nuevo o reordenaba la lista (por ejemplo porque cambió su fecha
+// de alarma) y ese cambio quedaba por encima de la fila que se estaba viendo,
+// restaurar el mismo scrollTop en píxeles ya no apuntaba a esa fila: el
+// contenido se corría hacia arriba o abajo y se sentía como un "salto",
+// aunque el número de píxeles fuera idéntico. Anclando a la fila (con
+// defaultRowKey, la misma clave que usa reconcileTbody) esa fila se mantiene
+// exactamente donde estaba en pantalla, sin importar cuántas filas se hayan
+// insertado o reordenado por encima.
 function captureScrollState(){
   const grab = id => {
     const tb = document.getElementById(id);
     const box = tb && tb.closest('.table-scroll');
-    return box ? { box, top: box.scrollTop, left: box.scrollLeft } : null;
+    if(!box) return null;
+    const boxTop = box.getBoundingClientRect().top;
+    let anchorKey = null, anchorOffset = 0;
+    for(const row of Array.from(tb.children)){
+      const r = row.getBoundingClientRect();
+      if(r.bottom > boxTop){ // primera fila aún visible (o asomando) arriba de la caja
+        const key = defaultRowKey(row);
+        if(key){ anchorKey = key; anchorOffset = r.top - boxTop; }
+        break;
+      }
+    }
+    return { box, tbodyId: id, top: box.scrollTop, left: box.scrollLeft, anchorKey, anchorOffset };
   };
   return {
     winX: window.scrollX,
@@ -1852,7 +1874,22 @@ function captureScrollState(){
 }
 function restoreScrollState(state){
   if(!state) return;
-  state.boxes.forEach(b=>{ b.box.scrollTop = b.top; b.box.scrollLeft = b.left; });
+  state.boxes.forEach(b=>{
+    b.box.scrollLeft = b.left;
+    if(b.anchorKey){
+      const tb = document.getElementById(b.tbodyId);
+      const newRow = tb && Array.from(tb.children).find(el => defaultRowKey(el) === b.anchorKey);
+      if(newRow){
+        const boxTop = b.box.getBoundingClientRect().top;
+        const currentOffset = newRow.getBoundingClientRect().top - boxTop;
+        b.box.scrollTop += (currentOffset - b.anchorOffset);
+        return;
+      }
+    }
+    // sin ancla válida (la fila ya no existe, tabla vacía, etc.): se recurre
+    // al valor en píxeles como antes
+    b.box.scrollTop = b.top;
+  });
   window.scrollTo(state.winX, state.winY);
 }
 const prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
