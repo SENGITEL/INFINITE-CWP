@@ -351,6 +351,15 @@
   tbody td{
     padding:10px 12px; border-bottom:1px solid var(--line-soft); color:var(--text);
     vertical-align:top; max-width:220px;
+    /* Antes, al angostar una columna (arrastrando el borde del encabezado) por debajo de
+       lo que su contenido necesitaba, el texto/las etiquetas de esa celda no se recortaban
+       en ningún lado y terminaban "sobreponiéndose" visualmente a la columna vecina. Con
+       table-layout:fixed el ancho de la columna ya queda fijo de todas formas, así que
+       recortar aquí (overflow:hidden) solo evita que el contenido se salga de su celda —
+       el texto que quepa en varias líneas (Observación, chips de sitios, etc.) se sigue
+       viendo igual, solo que ya no invade la celda de al lado.
+    */
+    overflow:hidden;
   }
   tbody tr{ transition: background .12s ease; cursor:pointer; }
   tbody tr:nth-child(even){ background: rgba(255,255,255,0.012); }
