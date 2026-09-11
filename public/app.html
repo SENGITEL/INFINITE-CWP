@@ -2121,8 +2121,8 @@ function renderInner(){
   const huaweiCount = records.filter(r => r.gestor === 'HUAWEI' && r.estado !== 'CERRADO' && r.estado !== 'INGRESO' && r.estado !== 'SALIDA').length;
   const ingresosCount = records.filter(r => r.estado === 'INGRESO').length;
   const cerradosCount = records.filter(r => r.estado === 'CERRADO').length;
-  const electricoCount = records.filter(r => r.reporteElectrico).length;
-  const avisosPendientesCount = records.filter(r => r.seguimientoSolicitado && !r.seguimientoSolicitadoAtendido).length;
+  const electricoCount = records.filter(r => r.reporteElectrico && r.estado !== 'CERRADO').length;
+  const avisosPendientesCount = records.filter(r => r.seguimientoSolicitado && !r.seguimientoSolicitadoAtendido && r.estado !== 'CERRADO').length;
   document.getElementById('countEricsson').textContent = ericssonCount;
   document.getElementById('countHuawei').textContent = huaweiCount;
   document.getElementById('countIngresos').textContent = ingresosCount;
@@ -4891,6 +4891,49 @@ window.addEventListener('focus', ()=>{
 
 // tick the "actualizado hace Xs" label every second
 setInterval(refreshLastUpdatedLabel, 1000);
+
+/* ---------------- AUTO-SCROLL HORIZONTAL AL ACERCAR EL MOUSE A LOS BORDES ----------------
+   Las tablas tienen muchas columnas y requieren scroll horizontal. Para no obligar a usar
+   la barra de scroll manualmente, si el mouse se acerca al borde izquierdo o derecho del
+   contenedor de la tabla, esta se desplaza sola hacia ese lado (más rápido mientras más
+   cerca del borde esté el cursor), y se detiene en cuanto el mouse se aleja de esa zona. */
+(function initTableEdgeAutoScroll(){
+  const EDGE_ZONE = 70;   // px de "zona caliente" desde cada borde donde empieza a desplazarse
+  const MAX_SPEED = 16;   // px por frame cuando el cursor está justo en el borde
+  let activeBox = null;
+  let speed = 0;
+
+  function updateSpeed(box, clientX){
+    const rect = box.getBoundingClientRect();
+    const xInBox = clientX - rect.left;
+    if(xInBox < EDGE_ZONE){
+      const ratio = 1 - Math.max(xInBox, 0) / EDGE_ZONE;
+      speed = -MAX_SPEED * ratio; // hacia la izquierda
+    } else if(xInBox > rect.width - EDGE_ZONE){
+      const ratio = 1 - Math.max(rect.width - xInBox, 0) / EDGE_ZONE;
+      speed = MAX_SPEED * ratio; // hacia la derecha
+    } else {
+      speed = 0;
+    }
+  }
+
+  function step(){
+    if(activeBox && speed !== 0) activeBox.scrollLeft += speed;
+    requestAnimationFrame(step);
+  }
+
+  document.querySelectorAll('.table-scroll').forEach(box=>{
+    box.addEventListener('mousemove', (e)=>{
+      activeBox = box;
+      updateSpeed(box, e.clientX);
+    });
+    box.addEventListener('mouseleave', ()=>{
+      if(activeBox === box){ speed = 0; activeBox = null; }
+    });
+  });
+
+  requestAnimationFrame(step);
+})();
 
 /* ---------------- TEMA OSCURO / CLARO (preferencia personal, no compartida) ---------------- */
 const STORAGE_KEY_THEME = "user-theme-preference";
