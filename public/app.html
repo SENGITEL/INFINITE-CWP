@@ -154,6 +154,12 @@
   .status-strip .sep{color:var(--line);}
   .status-strip .updated{color:var(--text-dim);}
 
+  #refreshBtn{ display:flex; align-items:center; gap:6px; }
+  #refreshBtn:disabled{ opacity:.6; cursor:default; }
+  #refreshIcon{ display:inline-block; }
+  #refreshIcon.spinning{ animation: spin 0.7s linear infinite; }
+  @keyframes spin{ from{ transform:rotate(0deg); } to{ transform:rotate(360deg); } }
+
   .actions{display:flex; gap:10px; align-items:center; flex-wrap:wrap;}
   button{ font-family: var(--font-ui); cursor:pointer; border:none; }
   .btn-primary{
@@ -898,6 +904,7 @@
         <span class="dot"></span><span id="syncText">sincronizado</span>
         <span class="sep">·</span><span class="updated" id="lastUpdated">—</span>
       </div>
+      <button class="btn-ghost" id="refreshBtn" title="Actualizar ahora desde el servidor"><span id="refreshIcon">🔄</span> Actualizar</button>
       <button class="btn-ghost" id="themeToggleBtn" title="Cambiar entre modo oscuro y claro">🌙 Oscuro</button>
       <button class="btn-ghost" id="exportBtn">⬇ Exportar Excel</button>
       <button class="btn-ghost" id="shiftSummaryBtn">📋 Resumen de turno</button>
@@ -2160,6 +2167,9 @@ function renderInner(){
       const vb = (b[sortColumn]||'').toString().toUpperCase();
       if(va < vb) return -1 * dir;
       if(va > vb) return 1 * dir;
+      // Desempate: entre dos registros con la misma fecha, el creado más reciente
+      // queda primero cuando se ordena descendente (más reciente arriba).
+      if(sortColumn === 'fechaAlarma') return ((b.createdAt||0)-(a.createdAt||0)) * dir;
       return 0;
     });
   }
@@ -4808,6 +4818,20 @@ document.getElementById('newBtn').addEventListener('click', ()=> openModal(null)
 document.getElementById('exportBtn').addEventListener('click', exportToCSV);
 document.getElementById('shiftSummaryBtn').addEventListener('click', openShiftSummaryModal);
 document.getElementById('electricoExportBtn').addEventListener('click', exportElectricoToCSV);
+document.getElementById('refreshBtn').addEventListener('click', async ()=>{
+  if(isModalOpen || isInlineEditing || isCommitting) return; // no interrumpir lo que la persona está editando
+  const btn = document.getElementById('refreshBtn');
+  const icon = document.getElementById('refreshIcon');
+  btn.disabled = true;
+  icon.classList.add('spinning');
+  try{
+    await loadAll(true);
+    showToast('Datos actualizados con el servidor');
+  } finally {
+    icon.classList.remove('spinning');
+    btn.disabled = false;
+  }
+});
 document.getElementById('searchInput').addEventListener('input', (e)=>{
   searchTerm = e.target.value;
   render();
@@ -4820,7 +4844,10 @@ document.querySelectorAll('thead th.sortable').forEach(th=>{
       sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
     } else {
       sortColumn = col;
-      sortDirection = 'asc';
+      // Para la columna de Fecha, el primer clic debe mostrar lo más reciente arriba
+      // y lo más viejo abajo (igual que el orden por defecto de la tabla); para las
+      // demás columnas (Estado, Service ID) se mantiene ascendente A→Z como antes.
+      sortDirection = (col === 'fechaAlarma') ? 'desc' : 'asc';
     }
     render();
   });
