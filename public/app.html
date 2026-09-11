@@ -601,6 +601,38 @@
   .id-status-menu button:hover{ background:var(--panel-3); }
   .id-status-menu .dot{ width:9px; height:9px; border-radius:50%; flex-shrink:0; }
 
+  /* Popover para agregar/editar/ver la Observación directamente desde la vista general de la bitácora */
+  .obs-cell{ display:flex; align-items:flex-start; gap:6px; }
+  .obs-cell > span, .obs-cell > .empty-dash{ flex:1; min-width:0; }
+  .obs-edit-btn{
+    background:transparent; border:1px solid var(--line); color:var(--text-faint);
+    font-size:11px; padding:3px 6px; border-radius:5px; flex-shrink:0; transition:.12s ease;
+  }
+  .obs-edit-btn:hover{ color:var(--accent); border-color:var(--accent-dim); background:var(--panel-3); }
+  .obs-popover{
+    position:fixed; z-index:500; background:var(--panel); border:1px solid var(--line);
+    border-radius:9px; padding:10px; box-shadow:0 8px 24px rgba(0,0,0,.35);
+    width:300px; display:flex; flex-direction:column; gap:8px;
+  }
+  .obs-popover .obs-popover-label{
+    font-family:var(--font-mono); font-size:10.5px; letter-spacing:.3px; text-transform:uppercase;
+    color:var(--text-faint); font-weight:700;
+  }
+  .obs-popover textarea{
+    width:100%; min-height:90px; resize:vertical; background:var(--panel-2); color:var(--text);
+    border:1px solid var(--line-soft); border-radius:7px; padding:8px 9px; font-family:var(--font-ui);
+    font-size:12.5px; line-height:1.4;
+  }
+  .obs-popover .obs-popover-actions{ display:flex; justify-content:flex-end; gap:8px; }
+  .obs-popover .obs-popover-actions button{
+    padding:6px 12px; border-radius:6px; font-size:12px; font-weight:700; border:1px solid var(--line);
+    background:var(--panel-2); color:var(--text-dim); transition:.12s ease;
+  }
+  .obs-popover .obs-popover-actions .obs-save-btn{
+    background:linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%); color:#04211d; border:none;
+  }
+  .obs-popover .obs-popover-actions button:hover{ filter:brightness(1.08); }
+
   .copy-cell{ display:flex; align-items:flex-start; gap:6px; }
   .copy-cell > span{ flex:1; min-width:0; }
   .copy-btn{
@@ -695,6 +727,8 @@
   }
   .tipo-btn.active-tipo, .masivo-btn.active-tipo{ background:var(--accent-dim); color:var(--accent); border-color:var(--accent); }
   .unico-grid{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .masivo-cat-row{ display:flex; flex-wrap:wrap; gap:8px; margin-top:2px; align-items:flex-start; }
+  .masivo-cat-row .masivo-cat-box{ flex:1 1 140px; min-width:140px; margin-top:0; }
   .masivo-cat-box{ margin-top:8px; }
   .masivo-cat-box:first-of-type{ margin-top:2px; }
   .masivo-cat-box .masivo-btn{ width:100%; display:block; text-align:left; padding:10px 12px; }
@@ -1292,6 +1326,7 @@ let sortDirection = 'asc'; // 'asc' | 'desc'
 let expandedMasivoGroups = new Set(); // ids de grupos MASIVO que el usuario expandió manualmente (contraídos por defecto)
 let escalateMenuEl = null; // referencia al menú flotante de "Escalar" actualmente abierto (si hay uno)
 let idStatusMenuEl = null; // referencia al menú flotante de "Estado eléctrico del Id" actualmente abierto (si hay uno)
+let obsPopoverEl = null; // referencia al popover de "Observación" (agregar/editar/ver) actualmente abierto, si hay uno
 
 // Determina el color de la celda Id según el estado eléctrico del registro:
 // Cerrado = verde, Indisponible = rojo, MG Portátil = azul, En Generador = naranja, En Baterías = amarillo.
@@ -2254,6 +2289,63 @@ function renderInner(){
     document.removeEventListener('click', closeIdStatusMenuOnce);
   }
 
+  // Popover para agregar, editar o simplemente ver la Observación de un registro sin salir
+  // de la vista general de la bitácora (evita tener que abrir el formulario completo).
+  function showObsPopover(anchorEl, id){
+    closeEscalateMenu();
+    closeIdStatusMenu();
+    closeObsPopover();
+    const rec = records.find(r => r.id === id);
+    if(!rec) return;
+    const rect = anchorEl.getBoundingClientRect();
+    const pop = document.createElement('div');
+    pop.className = 'obs-popover';
+    // se posiciona debajo del botón, pero se acomoda a la izquierda si se saldría de la pantalla
+    const left = Math.min(rect.left, window.innerWidth - 316);
+    pop.style.top = `${rect.bottom + 4}px`;
+    pop.style.left = `${Math.max(8, left)}px`;
+    pop.innerHTML = `
+      <div class="obs-popover-label">Observación${rec.serviceId ? ` — ${escapeHtml(rec.serviceId)}` : ''}</div>
+      <textarea id="obsPopoverTextarea" placeholder="Escribe una observación…">${escapeHtml(rec.observacion || '')}</textarea>
+      <div class="obs-popover-actions">
+        <button type="button" class="obs-cancel-btn">Cancelar</button>
+        <button type="button" class="obs-save-btn">Guardar</button>
+      </div>
+    `;
+    document.body.appendChild(pop);
+    obsPopoverEl = pop;
+    const textarea = pop.querySelector('#obsPopoverTextarea');
+    textarea.addEventListener('focus', ()=>{ isInlineEditing = true; });
+    textarea.addEventListener('blur', ()=>{ isInlineEditing = false; });
+    textarea.focus();
+    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+    pop.querySelector('.obs-cancel-btn').addEventListener('click', (e)=>{
+      e.stopPropagation();
+      closeObsPopover();
+    });
+    pop.querySelector('.obs-save-btn').addEventListener('click', async (e)=>{
+      e.stopPropagation();
+      const value = textarea.value.trim();
+      const current = records.find(r => r.id === id);
+      if(current){
+        current.observacion = value;
+        closeObsPopover();
+        render();
+        await saveRecords();
+        showToast('Observación guardada');
+      } else {
+        closeObsPopover();
+      }
+    });
+    pop.addEventListener('click', e => e.stopPropagation());
+    setTimeout(()=> document.addEventListener('click', closeObsPopoverOnce), 0);
+  }
+  function closeObsPopoverOnce(){ closeObsPopover(); }
+  function closeObsPopover(){
+    if(obsPopoverEl){ obsPopoverEl.remove(); obsPopoverEl = null; isInlineEditing = false; }
+    document.removeEventListener('click', closeObsPopoverOnce);
+  }
+
   function closeTkCluster(anchorRecords){
     const set = new Map();
     anchorRecords.forEach(r=>{
@@ -2318,7 +2410,12 @@ function buildRowHtml(r, extraClass){
         <td class="mono"><span class="id-cell ${getIdColorClass(r)}" style="font-weight:600;" data-id-menu="${r.id}" title="Clic para cambiar el estado eléctrico del sitio">${dashHl(r.serviceId, searchTerm)}</span></td>
         <td class="obs-text">${dash(r.nombreSitio)}</td>
         <td>${procesoHtml}</td>
-        <td class="obs-text">${compactTextHtml(r.observacion, searchTerm)}</td>
+        <td class="obs-text">
+          <div class="obs-cell">
+            ${compactTextHtml(r.observacion, searchTerm)}
+            <button type="button" class="obs-edit-btn" data-obs-edit="${r.id}" title="${r.observacion ? 'Ver / editar observación' : 'Agregar observación'}">${r.observacion ? '✎' : '＋'}</button>
+          </div>
+        </td>
         <td>${r.vip === 'SI' ? '<span class="vip-si">SÍ</span>' : '<span class="vip-no">NO</span>'}</td>
         <td>${siteInfo ? dash(siteInfo.baterias) : '<span class="empty-dash">—</span>'}</td>
         <td>${siteInfo ? dash(siteInfo.generador) : '<span class="empty-dash">—</span>'}</td>
@@ -2451,6 +2548,12 @@ function buildRowHtml(r, extraClass){
     btn.addEventListener('click', (e)=>{
       e.stopPropagation();
       openModal(btn.dataset.edit);
+    });
+  });
+  queryAllIn(touchedRows, '[data-obs-edit]').forEach(btn=>{
+    btn.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      showObsPopover(btn, btn.dataset.obsEdit);
     });
   });
   queryAllIn(touchedRows, '[data-copy]').forEach(btn=>{
@@ -3458,6 +3561,7 @@ function openModal(id, readOnly){
         </div>
         <div class="full" id="masivoBox" style="${r.tipoProceso==='MASIVO' ? '' : 'display:none;'}">
           <label>Tipo de masivo (selecciona una o varias)</label>
+          <div class="masivo-cat-row">
           <div class="masivo-cat-box" data-cat="EN BATERIAS">
             <button type="button" class="masivo-btn" id="f_masivo_baterias">🔋 En Baterías</button>
             <div class="masivo-ids" id="masivoIdsBaterias" style="display:none;">
@@ -3489,6 +3593,7 @@ function openModal(id, readOnly){
               <input type="text" id="f_serviceId_change" list="siteIdList" placeholder="PA213 (o pega varios: BT200, AU101, AU501)" />
               <div id="siteHintChange"></div>
             </div>
+          </div>
           </div>
         </div>
         <div id="fieldOtsSev1">
