@@ -487,6 +487,11 @@
   body.hide-ingresos-extra-cols #casesView table td:nth-child(18){ display:table-cell; }
   body.hide-ingresos-extra-cols #casesView table th:nth-child(19),
   body.hide-ingresos-extra-cols #casesView table td:nth-child(19){ display:table-cell; }
+  /* Columna "Fecha y hora de cierre": solo se muestra en la pestaña Cerrados. */
+  #casesView table th:nth-child(20),
+  #casesView table td:nth-child(20){ display:none; }
+  body.show-cerrado-col #casesView table th:nth-child(20),
+  body.show-cerrado-col #casesView table td:nth-child(20){ display:table-cell; }
   .electrico-check{ display:flex; align-items:center; gap:9px; cursor:pointer; user-select:none; }
   .aviso-count-badge{
     display:inline-flex; align-items:center; justify-content:center; min-width:20px; height:20px;
@@ -1031,6 +1036,7 @@
               <th>Teams</th>
               <th>Actividad</th>
               <th>Salida</th>
+              <th>Fecha y hora de cierre</th>
             </tr>
           </thead>
           <tbody id="tbody"></tbody>
@@ -1782,6 +1788,7 @@ function switchTab(tab){
   document.getElementById('exportBtn').style.display = (tab === 'ERICSSON' || tab === 'HUAWEI' || tab === 'INGRESOS' || tab === 'CERRADOS') ? 'inline-block' : 'none';
   document.body.classList.toggle('hide-gestor-col', tab === 'ERICSSON' || tab === 'HUAWEI');
   document.body.classList.toggle('hide-ingresos-extra-cols', tab === 'INGRESOS');
+  document.body.classList.toggle('show-cerrado-col', tab === 'CERRADOS');
   render();
 }
 
@@ -2295,7 +2302,7 @@ function renderInner(){
           else if(opcion === 'generador') rec.proceso = 'En Generador';
           else if(opcion === 'baterias') rec.proceso = 'En Baterías';
           else if(opcion === 'indisponible') rec.proceso = 'Culmina respaldo, Indisponible';
-          else if(opcion === 'cerrado') rec.estado = 'CERRADO';
+          else if(opcion === 'cerrado'){ rec.estado = 'CERRADO'; rec.cerradoAt = rec.cerradoAt || Date.now(); }
           if(opcion !== 'cerrado' && (!rec.teams || rec.teams === previousAutoTeams)){
             rec.teams = generateTeamsText(rec);
           }
@@ -2468,6 +2475,7 @@ function buildRowHtml(r, extraClass){
         </td>
         <td class="obs-text">${dash(r.actividad)}</td>
         <td class="mono">${r.salidaAt ? formatDateTime(r.salidaAt) : '<span class="empty-dash">—</span>'}</td>
+        <td class="mono">${r.cerradoAt ? formatDateTime(r.cerradoAt) : '<span class="empty-dash">—</span>'}</td>
       </tr>
     `;
   }
@@ -2525,6 +2533,7 @@ function buildRowHtml(r, extraClass){
         </td>
         <td><span class="empty-dash">—</span></td>
         <td><span class="empty-dash">—</span></td>
+        <td class="mono">${(()=>{ const closedAts = groupRecords.map(x=>x.cerradoAt).filter(Boolean); return closedAts.length ? formatDateTime(Math.max(...closedAts)) : '<span class="empty-dash">—</span>'; })()}</td>
       </tr>
     `;
   }
@@ -2542,7 +2551,7 @@ function buildRowHtml(r, extraClass){
           const tkSharing = closeTkCluster(groupRecords);
           const tkPending = tkSharing.filter(x=>x.estado!=='CERRADO');
           const closeBtnHtml = tkPending.length > 0 ? `<button type="button" class="close-tk-btn" data-close-tk-group="${gkey}" title="Cerrar todos los registros que comparten TK con un solo clic">${ROW_ICONS.check} Cerrar por TK (${tkPending.length})</button>` : '';
-          rowsHtml.push(`<tr class="masivo-collapse-row" data-group="${gkey}"><td colspan="19"><button type="button" class="masivo-toggle-btn" data-toggle-group="${gkey}">▾ Contraer grupo masivo (${groupRecords.length} Service ID)</button>${closeBtnHtml}</td></tr>`);
+          rowsHtml.push(`<tr class="masivo-collapse-row" data-group="${gkey}"><td colspan="20"><button type="button" class="masivo-toggle-btn" data-toggle-group="${gkey}">▾ Contraer grupo masivo (${groupRecords.length} Service ID)</button>${closeBtnHtml}</td></tr>`);
           groupRecords.forEach(gr => rowsHtml.push(buildRowHtml(gr, 'masivo-child')));
         } else {
           rowsHtml.push(buildMasivoGroupRowHtml(gkey, groupRecords));
@@ -2615,6 +2624,7 @@ function buildRowHtml(r, extraClass){
       if(!rec) return;
       if(!confirm('¿Cerrar este registro?')) return;
       rec.estado = 'CERRADO';
+      rec.cerradoAt = rec.cerradoAt || Date.now();
       render();
       await saveRecords();
       showToast('Registro cerrado');
@@ -2646,6 +2656,7 @@ function buildRowHtml(r, extraClass){
       if(!rec) return;
       if(!confirm('¿Reabrir este registro? Pasará a estado "En gestión".')) return;
       rec.estado = 'EN GESTION';
+      rec.cerradoAt = null;
       render();
       await saveRecords();
       showToast('Registro reabierto');
@@ -2731,7 +2742,7 @@ function buildRowHtml(r, extraClass){
       const pendientes = cluster.filter(r=>r.estado!=='CERRADO');
       if(pendientes.length === 0) return;
       if(!confirm(`¿Cerrar los ${pendientes.length} registro(s) que comparten este mismo TK?`)) return;
-      pendientes.forEach(r => { r.estado = 'CERRADO'; });
+      pendientes.forEach(r => { r.estado = 'CERRADO'; r.cerradoAt = r.cerradoAt || Date.now(); });
       render();
       await saveRecords();
       showToast(`${pendientes.length} registro(s) cerrado(s) por TK compartido`);
@@ -2752,7 +2763,7 @@ function buildRowHtml(r, extraClass){
       const pendientes = [...set.values()].filter(r=>r.estado!=='CERRADO');
       if(pendientes.length === 0) return;
       if(!confirm(`¿Cerrar los ${pendientes.length} registro(s) que comparten el mismo TK que este lote masivo?`)) return;
-      pendientes.forEach(r => { r.estado = 'CERRADO'; });
+      pendientes.forEach(r => { r.estado = 'CERRADO'; r.cerradoAt = r.cerradoAt || Date.now(); });
       render();
       await saveRecords();
       showToast(`${pendientes.length} registro(s) cerrado(s) por TK compartido`);
@@ -3532,7 +3543,7 @@ function openModal(id, readOnly){
   const r = editingId ? records.find(x=>x.id===editingId) : {
     id: uid(), estado:'EN GESTION', otsSev1:'', fechaAlarma:new Date().toISOString().slice(0,10),
     otsSev2:'', tpChange:'', serviceId:'', categoria:'', proceso:'', observacion:'', vip:'NO', seguridad:'', teams:'',
-    contacto:'', actividad:'', salidaAt:null,
+    contacto:'', actividad:'', salidaAt:null, cerradoAt:null,
     tipoProceso:'UNICO',
     gestor: defaultGestor, reporteElectrico:false, reporteElectricoEnviado:false,
     reporteElectricoTexto:'', reporteElectricoProveedor:'', reporteElectricoEstado:'',
@@ -4250,10 +4261,11 @@ function openModal(id, readOnly){
 
     const isNewSeguimientoRequest = seguimientoCb.checked && seguimientoSessionBumps > 0;
     const seguimientoSolicitadoCount = (r.seguimientoSolicitadoCount || 0) + seguimientoSessionBumps;
+    const nuevoEstado = document.getElementById('f_estado').value;
     const updated = {
       id: r.id,
       gestor: gestor,
-      estado: document.getElementById('f_estado').value,
+      estado: nuevoEstado,
       otsSev1: document.getElementById('f_otsSev1').value.trim(),
       fechaAlarma: document.getElementById('f_fecha').value,
       otsSev2: document.getElementById('f_otsSev2').value.trim(),
@@ -4267,6 +4279,9 @@ function openModal(id, readOnly){
       contacto: document.getElementById('f_contacto').value.trim(),
       actividad: document.getElementById('f_actividad').value.trim(),
       salidaAt: r.salidaAt || null,
+      // Fecha/hora de cierre: se fija la primera vez que el registro pasa a CERRADO y se
+      // conserva si se vuelve a guardar estando ya cerrado; se limpia si se reabre.
+      cerradoAt: nuevoEstado === 'CERRADO' ? (r.cerradoAt || Date.now()) : null,
       vip: vip,
       seguridad: seguridad,
       teams: document.getElementById('f_teams').value,
@@ -4476,7 +4491,10 @@ function openMasivoGroupModal(groupKey){
     }
 
     groupRecords.forEach(r=>{
-      if(sharedEstado) r.estado = sharedEstado;
+      if(sharedEstado){
+        r.estado = sharedEstado;
+        r.cerradoAt = sharedEstado === 'CERRADO' ? (r.cerradoAt || Date.now()) : null;
+      }
       r.fechaAlarma = sharedFecha;
       r.otsSev1 = sharedOtsSev1;
       r.otsSev2 = sharedOtsSev2;
