@@ -5025,7 +5025,11 @@ loadThemePreference();
    Delegado a nivel documento (una sola vez): cubre las celdas de todas las tablas
    (Ericsson/Huawei y Eléctrico), incluso tras cada re-render, sin re-enlazar listeners.
    - Clic normal: copia el número al portapapeles (comportamiento original).
-   - Ctrl+clic (o Cmd+clic en Mac): abre el OTS directamente en la plataforma, en pestaña nueva. */
+   - Ctrl+clic (Windows/Linux) o Cmd+clic (Mac): abre el OTS en la plataforma, en pestaña nueva.
+   - En macOS, mantener Control y hacer clic NO dispara un 'click' normal: el sistema operativo
+     lo traduce en clic derecho (evento 'contextmenu'). Por eso también escuchamos 'contextmenu'
+     y, si viene con Ctrl presionado sobre una celda TK, cancelamos el menú contextual del
+     navegador y abrimos el enlace igual que con Ctrl+clic en Windows. */
 const OTS_PLATFORM_URL = (id)=> `https://ots.lla.com/requests/show/index/id/${encodeURIComponent(id)}`;
 document.addEventListener('click', async (e)=>{
   const cell = e.target.closest('.tk-copy');
@@ -5041,6 +5045,17 @@ document.addEventListener('click', async (e)=>{
 
   const ok = await copyTextToClipboard(value);
   showToast(ok ? `TK ${value} copiado al portapapeles` : 'No se pudo copiar el TK', ok ? 'success' : 'error');
+});
+
+document.addEventListener('contextmenu', (e)=>{
+  if(!e.ctrlKey) return; // clic derecho normal (sin Ctrl): dejar el menú contextual de siempre
+  const cell = e.target.closest('.tk-copy');
+  if(!cell) return;
+  const value = cell.dataset.copy || cell.textContent.trim();
+  if(!value) return;
+  e.preventDefault();
+  e.stopPropagation();
+  window.open(OTS_PLATFORM_URL(value), '_blank', 'noopener');
 });
 
 /* ---------------- COLUMNAS AJUSTABLES (arrastrar el borde derecho de cada encabezado) ----------------
