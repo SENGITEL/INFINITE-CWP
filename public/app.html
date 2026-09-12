@@ -429,6 +429,15 @@
   .ticket-shared-6{ background:rgba(88,222,222,0.14); color:#58dede; border-color:rgba(88,222,222,0.35); }
   .ticket-shared-7{ background:rgba(216,216,120,0.14); color:#d8d878; border-color:rgba(216,216,120,0.35); }
   tr[data-ticket-group]{ box-shadow: inset 3px 0 0 0 var(--ticket-group-color, transparent); }
+  /* OTS Sev 3 y Sev 4 apilados uno debajo del otro dentro de la misma celda. */
+  .ots-stack-item{ padding:2px 0; display:flex; align-items:flex-start; gap:6px; }
+  .ots-stack-sep{ margin-top:4px; padding-top:4px; border-top:1px dashed var(--line-soft); }
+  .ots-tag{
+    display:inline-block; flex-shrink:0; margin-top:1px; padding:1px 6px; border-radius:4px;
+    font-size:9px; font-weight:700; letter-spacing:.3px; line-height:1.5; white-space:nowrap;
+  }
+  .ots-tag-sev3{ background:rgba(255,86,86,0.18); color:#ff6b6b; border:1px solid rgba(255,86,86,0.4); }
+  .ots-tag-sev4{ background:rgba(255,255,255,0.10); color:#b9bec7; border:1px solid rgba(255,255,255,0.22); }
   /* Celdas de TK (OTS Sev3/Sev4, TP Change): clic para copiar el número al portapapeles. */
   .tk-copy{ cursor:pointer; border-radius:4px; transition:background .12s, box-shadow .12s; }
   .tk-copy:not(.ticket-shared):hover{ background:rgba(255,255,255,0.08); box-shadow:0 0 0 1px rgba(255,255,255,0.15); }
@@ -1001,9 +1010,8 @@
             <tr>
               <th class="sortable" data-sort="estado">Estado<span class="sort-ind"></span></th>
               <th>Gestor</th>
-              <th>OTS Sev 3</th>
+              <th>OTS Sev 3 / Sev 4</th>
               <th class="sortable" data-sort="fechaAlarma">Fecha de la alarma<span class="sort-ind"></span></th>
-              <th>OTS Sev 4</th>
               <th>TP Change</th>
               <th class="sortable" data-sort="serviceId">Service ID<span class="sort-ind"></span></th>
               <th>Nombre</th>
@@ -2408,14 +2416,18 @@ function buildRowHtml(r, extraClass){
         </td>
         <td class="mono">${r.gestor === 'HUAWEI' ? 'Huawei' : 'Ericsson'}</td>
         <td class="mono">
-          <span class="${r.otsSev1Cerrado ? 'tk-closed-value' : ''}">${ticketCellHtml(r.otsSev1, sharedOts1Colors, searchTerm)}</span>
-          ${tkPartialCloseHtml(r, 'otsSev1', 'otsSev1Cerrado')}
+          <div class="ots-stack-item">
+            <span class="ots-tag ots-tag-sev3">SEV3</span>
+            <span class="${r.otsSev1Cerrado ? 'tk-closed-value' : ''}">${ticketCellHtml(r.otsSev1, sharedOts1Colors, searchTerm)}</span>
+            ${tkPartialCloseHtml(r, 'otsSev1', 'otsSev1Cerrado')}
+          </div>
+          <div class="ots-stack-item ots-stack-sep">
+            <span class="ots-tag ots-tag-sev4">SEV4</span>
+            <span class="${r.otsSev2Cerrado ? 'tk-closed-value' : ''}">${ticketCellHtml(r.otsSev2, sharedOts2Colors, searchTerm)}</span>
+            ${tkPartialCloseHtml(r, 'otsSev2', 'otsSev2Cerrado')}
+          </div>
         </td>
         <td class="mono">${dash(r.fechaAlarma)}</td>
-        <td class="mono">
-          <span class="${r.otsSev2Cerrado ? 'tk-closed-value' : ''}">${ticketCellHtml(r.otsSev2, sharedOts2Colors, searchTerm)}</span>
-          ${tkPartialCloseHtml(r, 'otsSev2', 'otsSev2Cerrado')}
-        </td>
         <td class="mono">${ticketCellHtml(r.tpChange, sharedTpChangeColors, searchTerm)}</td>
         <td class="mono"><span class="id-cell ${getIdColorClass(r)}" style="font-weight:600;" data-id-menu="${r.id}" title="Clic para cambiar el estado eléctrico del sitio">${dashHl(r.serviceId, searchTerm)}</span></td>
         <td class="obs-text">${dash(r.nombreSitio)}</td>
@@ -2481,14 +2493,11 @@ function buildRowHtml(r, extraClass){
         </td>
         <td class="mono">${first.gestor === 'HUAWEI' ? 'Huawei' : 'Ericsson'}</td>
         <td class="mono">
-          ${ticketCellHtml(first.otsSev1, sharedOts1Colors, searchTerm)}
+          <div class="ots-stack-item"><span class="ots-tag ots-tag-sev3">SEV3</span>${ticketCellHtml(first.otsSev1, sharedOts1Colors, searchTerm)}</div>
+          <div class="ots-stack-item ots-stack-sep"><span class="ots-tag ots-tag-sev4">SEV4</span>${ticketCellHtml(first.otsSev2, sharedOts2Colors, searchTerm)}</div>
           <div><button type="button" class="masivo-toggle-btn masivo-toggle-icon" data-toggle-group="${groupKey}" title="Ver/editar registros individuales">▾</button></div>
         </td>
         <td class="mono">${dash(first.fechaAlarma)}</td>
-        <td class="mono">
-          ${ticketCellHtml(first.otsSev2, sharedOts2Colors, searchTerm)}
-          <div><button type="button" class="masivo-toggle-btn masivo-toggle-icon" data-toggle-group="${groupKey}" title="Ver/editar registros individuales">▾</button></div>
-        </td>
         <td class="mono">${ticketCellHtml(first.tpChange, sharedTpChangeColors, searchTerm)}</td>
         <td class="mono">
           <div class="sid-chip-wrap">${chips}</div>
@@ -2525,7 +2534,7 @@ function buildRowHtml(r, extraClass){
           const tkSharing = closeTkCluster(groupRecords);
           const tkPending = tkSharing.filter(x=>x.estado!=='CERRADO');
           const closeBtnHtml = tkPending.length > 0 ? `<button type="button" class="close-tk-btn" data-close-tk-group="${gkey}" title="Cerrar todos los registros que comparten TK con un solo clic">${ROW_ICONS.check} Cerrar por TK (${tkPending.length})</button>` : '';
-          rowsHtml.push(`<tr class="masivo-collapse-row" data-group="${gkey}"><td colspan="20"><button type="button" class="masivo-toggle-btn" data-toggle-group="${gkey}">▾ Contraer grupo masivo (${groupRecords.length} Service ID)</button>${closeBtnHtml}</td></tr>`);
+          rowsHtml.push(`<tr class="masivo-collapse-row" data-group="${gkey}"><td colspan="19"><button type="button" class="masivo-toggle-btn" data-toggle-group="${gkey}">▾ Contraer grupo masivo (${groupRecords.length} Service ID)</button>${closeBtnHtml}</td></tr>`);
           groupRecords.forEach(gr => rowsHtml.push(buildRowHtml(gr, 'masivo-child')));
         } else {
           rowsHtml.push(buildMasivoGroupRowHtml(gkey, groupRecords));
