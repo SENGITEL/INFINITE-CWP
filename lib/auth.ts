@@ -92,6 +92,7 @@ function getUsers(): Record<string, string> {
     [process.env.NOC_USERNAME || "admin"]: process.env.NOC_PASSWORD || "noc2024",
     supervisor: "infinite2026",
     operador: "noc2024",
+    daniel: "infinite26",
   }
 }
 
