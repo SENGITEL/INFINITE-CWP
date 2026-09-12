@@ -463,12 +463,12 @@
      de pestañas es al revés: se ocultan estas columnas y se muestra "Actividad" solo aquí. */
   body.hide-ingresos-extra-cols #casesView table th:nth-child(3),
   body.hide-ingresos-extra-cols #casesView table td:nth-child(3),
-  body.hide-ingresos-extra-cols #casesView table th:nth-child(5),
-  body.hide-ingresos-extra-cols #casesView table td:nth-child(5),
+  body.hide-ingresos-extra-cols #casesView table th:nth-child(8),
+  body.hide-ingresos-extra-cols #casesView table td:nth-child(8),
   body.hide-ingresos-extra-cols #casesView table th:nth-child(9),
   body.hide-ingresos-extra-cols #casesView table td:nth-child(9),
-  body.hide-ingresos-extra-cols #casesView table th:nth-child(10),
-  body.hide-ingresos-extra-cols #casesView table td:nth-child(10),
+  body.hide-ingresos-extra-cols #casesView table th:nth-child(11),
+  body.hide-ingresos-extra-cols #casesView table td:nth-child(11),
   body.hide-ingresos-extra-cols #casesView table th:nth-child(12),
   body.hide-ingresos-extra-cols #casesView table td:nth-child(12),
   body.hide-ingresos-extra-cols #casesView table th:nth-child(13),
@@ -478,17 +478,15 @@
   body.hide-ingresos-extra-cols #casesView table th:nth-child(15),
   body.hide-ingresos-extra-cols #casesView table td:nth-child(15),
   body.hide-ingresos-extra-cols #casesView table th:nth-child(16),
-  body.hide-ingresos-extra-cols #casesView table td:nth-child(16),
-  body.hide-ingresos-extra-cols #casesView table th:nth-child(17),
-  body.hide-ingresos-extra-cols #casesView table td:nth-child(17){ display:none; }
+  body.hide-ingresos-extra-cols #casesView table td:nth-child(16){ display:none; }
+  #casesView table th:nth-child(18),
+  #casesView table td:nth-child(18){ display:none; }
   #casesView table th:nth-child(19),
   #casesView table td:nth-child(19){ display:none; }
-  #casesView table th:nth-child(20),
-  #casesView table td:nth-child(20){ display:none; }
+  body.hide-ingresos-extra-cols #casesView table th:nth-child(18),
+  body.hide-ingresos-extra-cols #casesView table td:nth-child(18){ display:table-cell; }
   body.hide-ingresos-extra-cols #casesView table th:nth-child(19),
   body.hide-ingresos-extra-cols #casesView table td:nth-child(19){ display:table-cell; }
-  body.hide-ingresos-extra-cols #casesView table th:nth-child(20),
-  body.hide-ingresos-extra-cols #casesView table td:nth-child(20){ display:table-cell; }
   .electrico-check{ display:flex; align-items:center; gap:9px; cursor:pointer; user-select:none; }
   .aviso-count-badge{
     display:inline-flex; align-items:center; justify-content:center; min-width:20px; height:20px;
@@ -1886,7 +1884,11 @@ function compactTextHtml(v, term, threshold){
 /* ---------------- KPI BAR ---------------- */
 
 function updateKpis(){
-  const activeRecords = records.filter(r => r.estado !== 'CERRADO');
+  // "Casos activos" (RAN/INFRA) solo debe contar los casos realmente en trámite de falla:
+  // En Gestión, Escalado a IP/DWDM y Seguimiento. Quedan fuera CERRADO, INGRESO/SALIDA,
+  // TP (CHANGE) y PENDIENTE POR CIERRE, que no son "casos activos" para este indicador.
+  const ESTADOS_ACTIVOS_RAN = ['EN GESTION', 'ESCALADO A IP', 'ESCALADO A DWDM', 'SEGUIMIENTO'];
+  const activeRecords = records.filter(r => ESTADOS_ACTIVOS_RAN.includes(r.estado));
 
   // "Casos activos" ahora cuenta por OTS único, no por cantidad de IDs/registros, y se
   // desglosa por gestor (Ericsson / Huawei):
