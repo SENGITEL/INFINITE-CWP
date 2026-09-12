@@ -742,11 +742,10 @@
   }
   .tipo-btn.active-tipo, .masivo-btn.active-tipo{ background:var(--accent-dim); color:var(--accent); border-color:var(--accent); }
   .unico-grid{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
-  .masivo-cat-row{ display:flex; flex-wrap:wrap; gap:8px; margin-top:2px; align-items:flex-start; }
-  .masivo-cat-row .masivo-cat-box{ flex:1 1 140px; min-width:140px; margin-top:0; }
-  .masivo-cat-box{ margin-top:8px; }
-  .masivo-cat-box:first-of-type{ margin-top:2px; }
-  .masivo-cat-box .masivo-btn{ width:100%; display:block; text-align:left; padding:10px 12px; }
+  .masivo-cat-btns{ display:flex; gap:8px; margin-top:2px; }
+  .masivo-cat-btns .masivo-btn{ flex:1 1 0; min-width:0; text-align:center; padding:10px 8px; }
+  .masivo-cat-content{ margin-top:8px; }
+  .masivo-cat-content .masivo-ids{ margin-top:0; }
   .masivo-ids{
     margin-top:8px; padding:10px 12px; background:var(--panel-2); border:1px solid var(--line-soft);
     border-radius:8px;
@@ -781,6 +780,13 @@
      tamaño de chip normal y solo se añaden el puntero y un efecto de hover propio */
   .sid-chip.id-cell{ cursor:pointer; padding:2px 7px; margin:0; display:inline-flex; }
   .sid-chip.id-cell:hover{ border-color:var(--accent-dim); filter:brightness(1.2); background:var(--panel-3); }
+  /* el color asignado según el proceso (baterías, generador, indisponible, etc.) debe verse
+     también en el chip del Id cuando el lote masivo está contraído */
+  .sid-chip.id-cell.id-color-mg{ color:var(--blue); }
+  .sid-chip.id-cell.id-color-generador{ color:var(--escip); }
+  .sid-chip.id-cell.id-color-baterias{ color:var(--warn); }
+  .sid-chip.id-cell.id-color-indisponible{ color:var(--danger); font-weight:800; }
+  .sid-chip.id-cell.id-color-cerrado{ color:var(--seguimiento); }
   .masivo-mixed{
     font-family:var(--font-mono); font-size:10.5px; font-weight:700; color:var(--text-faint);
     background:var(--panel-3); border:1px solid var(--line); padding:3px 8px; border-radius:6px;
@@ -3503,6 +3509,19 @@ function generateIngresoTeamsText(r){
 /* ---------------- CASE MODAL ---------------- */
 
 function openModal(id, readOnly){
+  // Si ya hay un modal de registro abierto, no abrir uno encima (evita que los
+  // campos y el botón Guardar/Crear de un modal viejo queden mezclados con los
+  // de uno nuevo, que era lo que provocaba que se guardara un cambio de otro
+  // registro en vez de crear el nuevo).
+  if(isModalOpen){
+    const existingOverlay = document.getElementById('overlay');
+    if(existingOverlay){
+      showToast('Cierra el formulario que tienes abierto antes de abrir otro', 'info');
+      return;
+    }
+    // no debería pasar, pero por seguridad limpiamos el estado si quedó "colgado"
+    isModalOpen = false;
+  }
   isModalOpen = true;
   editingId = id || null;
   const openedFromTab = activeTab;
@@ -3580,39 +3599,33 @@ function openModal(id, readOnly){
         </div>
         <div class="full" id="masivoBox" style="${r.tipoProceso==='MASIVO' ? '' : 'display:none;'}">
           <label>Tipo de masivo (selecciona una o varias)</label>
-          <div class="masivo-cat-row">
-          <div class="masivo-cat-box" data-cat="EN BATERIAS">
+          <div class="masivo-cat-btns">
             <button type="button" class="masivo-btn" id="f_masivo_baterias">🔋 En Baterías</button>
+            <button type="button" class="masivo-btn" id="f_masivo_generador">⚙️ En Generador</button>
+            <button type="button" class="masivo-btn" id="f_masivo_caida">⚡ Caída Directa</button>
+            <button type="button" class="masivo-btn" id="f_masivo_change">🔧 Change</button>
+          </div>
+          <div class="masivo-cat-content">
             <div class="masivo-ids" id="masivoIdsBaterias" style="display:none;">
               <label>Service ID — En Baterías</label>
               <input type="text" id="f_serviceId_baterias" list="siteIdList" placeholder="PA213 (o pega varios: BT200, AU101, AU501)" />
               <div id="siteHintBaterias"></div>
             </div>
-          </div>
-          <div class="masivo-cat-box" data-cat="EN GENERADOR">
-            <button type="button" class="masivo-btn" id="f_masivo_generador">⚙️ En Generador</button>
             <div class="masivo-ids" id="masivoIdsGenerador" style="display:none;">
               <label>Service ID — En Generador</label>
               <input type="text" id="f_serviceId_generador" list="siteIdList" placeholder="PA213 (o pega varios: BT200, AU101, AU501)" />
               <div id="siteHintGenerador"></div>
             </div>
-          </div>
-          <div class="masivo-cat-box" data-cat="CAIDA DIRECTA">
-            <button type="button" class="masivo-btn" id="f_masivo_caida">⚡ Caída Directa</button>
             <div class="masivo-ids" id="masivoIdsCaida" style="display:none;">
               <label>Service ID — Caída Directa</label>
               <input type="text" id="f_serviceId_caida" list="siteIdList" placeholder="PA213 (o pega varios: BT200, AU101, AU501)" />
               <div id="siteHintCaida"></div>
             </div>
-          </div>
-          <div class="masivo-cat-box" data-cat="CHANGE">
-            <button type="button" class="masivo-btn" id="f_masivo_change">🔧 Change</button>
             <div class="masivo-ids" id="masivoIdsChange" style="display:none;">
               <label>Service ID — Change</label>
               <input type="text" id="f_serviceId_change" list="siteIdList" placeholder="PA213 (o pega varios: BT200, AU101, AU501)" />
               <div id="siteHintChange"></div>
             </div>
-          </div>
           </div>
         </div>
         <div id="fieldOtsSev1">
@@ -4314,6 +4327,10 @@ function closeModal(){
 function openMasivoGroupModal(groupKey){
   const groupRecords = records.filter(r => getMasivoGroupKey(r) === groupKey);
   if(groupRecords.length === 0) return;
+  if(isModalOpen && document.getElementById('overlay')){
+    showToast('Cierra el formulario que tienes abierto antes de abrir otro', 'info');
+    return;
+  }
   isModalOpen = true;
   editingId = null;
 
@@ -4516,6 +4533,10 @@ function openMasivoGroupModal(groupKey){
 /* ---------------- SITE MODAL ---------------- */
 
 function openSiteModal(id){
+  if(isModalOpen && document.getElementById('overlay')){
+    showToast('Cierra el formulario que tienes abierto antes de abrir otro', 'info');
+    return;
+  }
   isModalOpen = true;
   editingSiteId = id || null;
   const emptySite = { id: uid(), updatedAt: Date.now() };
@@ -4741,6 +4762,10 @@ async function commitSiteRecords(recs){
 
 
 function openImportSitesModal(){
+  if(isModalOpen && document.getElementById('overlay')){
+    showToast('Cierra el formulario que tienes abierto antes de abrir otro', 'info');
+    return;
+  }
   isModalOpen = true;
   const overlay = document.createElement('div');
   overlay.className = 'overlay';
