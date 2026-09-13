@@ -579,6 +579,7 @@
     display:inline-flex; align-items:center; justify-content:center; vertical-align:middle;
   }
   .action-close:hover{ color:#22c55e; background:rgba(34,197,94,.15); border-color:rgba(34,197,94,.35); }
+  .action-btn:disabled{ opacity:.35; pointer-events:none; }
   .action-escalate:hover{ color:var(--escip); background:var(--escip-bg); border-color:rgba(255,159,67,0.35); }
   .action-pending:hover{ color:var(--warn); background:var(--warn-bg); border-color:rgba(255,201,61,0.35); }
   .action-reopen:hover{ color:var(--blue); background:var(--blue-bg); border-color:rgba(79,182,255,0.35); }
@@ -2405,6 +2406,20 @@ function tkPartialCloseHtml(r, field, closedField){
     : `<button type="button" class="tk-partial-btn" data-tk-close="${r.id}" data-tk-field="${closedField}" title="Cerrar solo este TK, sin cerrar todo el registro">Cerrar TK</button>`;
 }
 
+// Regla de negocio: un registro con TP Change diligenciado no se puede cerrar
+// mientras tenga un OTS Sev 3 y/o Sev 4 diligenciado que no se haya cerrado
+// individualmente (botón "Cerrar TK", ver tkPartialCloseHtml). Si solo hay UN
+// OTS diligenciado no existe forma de marcarlo cerrado por separado, así que
+// el registro queda bloqueado hasta que se borre ese número de OTS.
+function tieneOtsBloqueandoCierre(r){
+  if(!(r.tpChange||'').trim()) return false;
+  const ots1 = (r.otsSev1||'').trim();
+  const ots2 = (r.otsSev2||'').trim();
+  if(ots1 && !r.otsSev1Cerrado) return true;
+  if(ots2 && !r.otsSev2Cerrado) return true;
+  return false;
+}
+
 function buildRowHtml(r, extraClass){
     const cls = ESTADO_CLASS[r.estado] || 'CERRADO';
     const procesoHtml = isProcesoCritico(r.proceso)
@@ -2423,7 +2438,11 @@ function buildRowHtml(r, extraClass){
                   ${r.estado === 'CERRADO'
                     ? `<button type="button" class="action-btn action-reopen" data-reopen="${r.id}" title="Reabrir">${ROW_ICONS.reopen}</button>`
                     : ((r.estado !== 'ESCALADO A IP' && r.estado !== 'ESCALADO A DWDM') ? `<button type="button" class="action-btn action-escalate" data-escalate="${r.id}" title="Escalar">${ROW_ICONS.escalate}</button>` : '')}
-                  ${r.estado !== 'CERRADO' ? `<button type="button" class="action-btn action-close" data-close="${r.id}" title="Cerrar registro">${ROW_ICONS.check}</button>` : ''}
+                  ${r.estado !== 'CERRADO'
+                    ? (tieneOtsBloqueandoCierre(r)
+                        ? `<button type="button" class="action-btn action-close" disabled title="No se puede cerrar: tiene TP Change con OTS Sev 3/4 sin cerrar">${ROW_ICONS.check}</button>`
+                        : `<button type="button" class="action-btn action-close" data-close="${r.id}" title="Cerrar registro">${ROW_ICONS.check}</button>`)
+                    : ''}
                   ${(r.estado !== 'CERRADO' && r.estado !== 'PENDIENTE POR CIERRE') ? `<button type="button" class="action-btn action-pending" data-pending="${r.id}" title="Marcar como pendiente de cierre">${ROW_ICONS.pending}</button>` : ''}
                 `}
             </div>
@@ -2627,6 +2646,11 @@ function buildRowHtml(r, extraClass){
       const id = btn.dataset.close;
       const rec = records.find(r=>r.id===id);
       if(!rec) return;
+      if(tieneOtsBloqueandoCierre(rec)){
+        showToast('No se puede cerrar: tiene TP Change con OTS Sev 3/4 sin cerrar', 'error');
+        render();
+        return;
+      }
       if(!confirm('¿Cerrar este registro?')) return;
       rec.estado = 'CERRADO';
       rec.cerradoAt = rec.cerradoAt || Date.now();
@@ -2744,13 +2768,19 @@ function buildRowHtml(r, extraClass){
       const anchor = records.find(r=>r.id===id);
       if(!anchor) return;
       const cluster = computeTkClusters(records).get(id) || [anchor];
-      const pendientes = cluster.filter(r=>r.estado!=='CERRADO');
-      if(pendientes.length === 0) return;
-      if(!confirm(`¿Cerrar los ${pendientes.length} registro(s) que comparten este mismo TK?`)) return;
+      const pendientesTodos = cluster.filter(r=>r.estado!=='CERRADO');
+      const bloqueados = pendientesTodos.filter(tieneOtsBloqueandoCierre);
+      const pendientes = pendientesTodos.filter(r=>!tieneOtsBloqueandoCierre(r));
+      if(pendientesTodos.length === 0) return;
+      if(pendientes.length === 0){
+        showToast('No se puede cerrar: todos tienen TP Change con OTS Sev 3/4 sin cerrar', 'error');
+        return;
+      }
+      if(!confirm(`¿Cerrar los ${pendientes.length} registro(s) que comparten este mismo TK?${bloqueados.length>0 ? ` (${bloqueados.length} quedan fuera por tener TP Change con OTS Sev 3/4 sin cerrar)` : ''}`)) return;
       pendientes.forEach(r => { r.estado = 'CERRADO'; r.cerradoAt = r.cerradoAt || Date.now(); });
       render();
       await saveRecords();
-      showToast(`${pendientes.length} registro(s) cerrado(s) por TK compartido`);
+      showToast(`${pendientes.length} registro(s) cerrado(s) por TK compartido${bloqueados.length>0 ? `, ${bloqueados.length} sin cerrar por OTS pendiente` : ''}`);
     });
   });
   queryAllIn(touchedRows, '[data-close-tk-group]').forEach(btn=>{
@@ -2765,13 +2795,19 @@ function buildRowHtml(r, extraClass){
         const cluster = clustersNow.get(r.id) || [r];
         cluster.forEach(x => set.set(x.id, x));
       });
-      const pendientes = [...set.values()].filter(r=>r.estado!=='CERRADO');
-      if(pendientes.length === 0) return;
-      if(!confirm(`¿Cerrar los ${pendientes.length} registro(s) que comparten el mismo TK que este lote masivo?`)) return;
+      const pendientesTodos = [...set.values()].filter(r=>r.estado!=='CERRADO');
+      const bloqueados = pendientesTodos.filter(tieneOtsBloqueandoCierre);
+      const pendientes = pendientesTodos.filter(r=>!tieneOtsBloqueandoCierre(r));
+      if(pendientesTodos.length === 0) return;
+      if(pendientes.length === 0){
+        showToast('No se puede cerrar: todos tienen TP Change con OTS Sev 3/4 sin cerrar', 'error');
+        return;
+      }
+      if(!confirm(`¿Cerrar los ${pendientes.length} registro(s) que comparten el mismo TK que este lote masivo?${bloqueados.length>0 ? ` (${bloqueados.length} quedan fuera por tener TP Change con OTS Sev 3/4 sin cerrar)` : ''}`)) return;
       pendientes.forEach(r => { r.estado = 'CERRADO'; r.cerradoAt = r.cerradoAt || Date.now(); });
       render();
       await saveRecords();
-      showToast(`${pendientes.length} registro(s) cerrado(s) por TK compartido`);
+      showToast(`${pendientes.length} registro(s) cerrado(s) por TK compartido${bloqueados.length>0 ? `, ${bloqueados.length} sin cerrar por OTS pendiente` : ''}`);
     });
   });
   queryAllIn(touchedRows, '[data-pending-group]').forEach(btn=>{
@@ -4268,6 +4304,19 @@ function openModal(id, readOnly){
     const isNewSeguimientoRequest = seguimientoCb.checked && seguimientoSessionBumps > 0;
     const seguimientoSolicitadoCount = (r.seguimientoSolicitadoCount || 0) + seguimientoSessionBumps;
     const nuevoEstado = document.getElementById('f_estado').value;
+    if(nuevoEstado === 'CERRADO'){
+      const candidato = {
+        tpChange: document.getElementById('f_tpChange').value.trim(),
+        otsSev1: document.getElementById('f_otsSev1').value.trim(),
+        otsSev2: document.getElementById('f_otsSev2').value.trim(),
+        otsSev1Cerrado: r.otsSev1Cerrado,
+        otsSev2Cerrado: r.otsSev2Cerrado
+      };
+      if(tieneOtsBloqueandoCierre(candidato)){
+        showToast('No se puede cerrar: tiene TP Change con OTS Sev 3/4 sin cerrar', 'error');
+        return;
+      }
+    }
     const updated = {
       id: r.id,
       gestor: gestor,
@@ -4496,10 +4545,19 @@ function openMasivoGroupModal(groupKey){
       groupRecords.forEach(r => { r.masivoGroupId = effectiveGroupId; });
     }
 
+    let bloqueadosGrupo = 0;
     groupRecords.forEach(r=>{
       if(sharedEstado){
-        r.estado = sharedEstado;
-        r.cerradoAt = sharedEstado === 'CERRADO' ? (r.cerradoAt || Date.now()) : null;
+        const seriaCerrado = sharedEstado === 'CERRADO' && tieneOtsBloqueandoCierre({
+          tpChange: sharedTpChange, otsSev1: sharedOtsSev1, otsSev2: sharedOtsSev2,
+          otsSev1Cerrado: r.otsSev1Cerrado, otsSev2Cerrado: r.otsSev2Cerrado
+        });
+        if(seriaCerrado){
+          bloqueadosGrupo++;
+        } else {
+          r.estado = sharedEstado;
+          r.cerradoAt = sharedEstado === 'CERRADO' ? (r.cerradoAt || Date.now()) : null;
+        }
       }
       r.fechaAlarma = sharedFecha;
       r.otsSev1 = sharedOtsSev1;
@@ -4528,8 +4586,13 @@ function openMasivoGroupModal(groupKey){
           otsSev1: sharedOtsSev1, serviceId: sid, otsSev2: sharedOtsSev2,
           nombreSitio, categoria: c.label, proceso: sharedProceso, observacion: sharedObservacion
         });
+        const estadoBloqueadoNuevo = sharedEstado === 'CERRADO' && tieneOtsBloqueandoCierre({
+          tpChange: sharedTpChange, otsSev1: sharedOtsSev1, otsSev2: sharedOtsSev2,
+          otsSev1Cerrado: false, otsSev2Cerrado: false
+        });
+        if(estadoBloqueadoNuevo) bloqueadosGrupo++;
         newRecs.push({
-          id: uid(), gestor, estado: sharedEstado || first.estado,
+          id: uid(), gestor, estado: estadoBloqueadoNuevo ? first.estado : (sharedEstado || first.estado),
           otsSev1: sharedOtsSev1, fechaAlarma: sharedFecha, otsSev2: sharedOtsSev2, tpChange: sharedTpChange,
           serviceId: sid, nombreSitio, categoria: c.label, tipoProceso: 'MASIVO', masivoGroupId: effectiveGroupId,
           proceso: sharedProceso, observacion: sharedObservacion,
@@ -4549,9 +4612,12 @@ function openMasivoGroupModal(groupKey){
     closeModal();
     render();
     await saveRecords();
-    showToast(newRecs.length > 0
+    const avisoBloqueo = bloqueadosGrupo > 0
+      ? ` — ${bloqueadosGrupo} registro(s) no se cerraron por tener TP Change con OTS Sev 3/4 sin cerrar`
+      : '';
+    showToast((newRecs.length > 0
       ? `Lote actualizado — ${newRecs.length} sitio${newRecs.length===1?'':'s'} nuevo${newRecs.length===1?'':'s'} agregado${newRecs.length===1?'':'s'}`
-      : 'Lote actualizado');
+      : 'Lote actualizado') + avisoBloqueo, bloqueadosGrupo > 0 ? 'info' : undefined);
   };
 }
 
