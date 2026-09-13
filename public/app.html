@@ -2592,7 +2592,12 @@ function buildRowHtml(r, extraClass){
       showObsPopover(btn, btn.dataset.obsEdit);
     });
   });
-  queryAllIn(touchedRows, '[data-copy]').forEach(btn=>{
+  // Solo los botones 📋 reales (.copy-btn): los spans .tk-copy de OTS/TP Change también
+  // llevan data-copy, pero esos los maneja el listener delegado en document (más abajo),
+  // que sí distingue clic normal (copiar) de Ctrl+clic (abrir en la plataforma). Si este
+  // selector los incluyera, este handler los interceptaría primero y detendría la
+  // propagación con stopPropagation(), y el Ctrl+clic nunca llegaría a evaluarse.
+  queryAllIn(touchedRows, '.copy-btn[data-copy]').forEach(btn=>{
     btn.addEventListener('click', async (e)=>{
       e.stopPropagation();
       const text = btn.dataset.copy;
@@ -2941,7 +2946,8 @@ function renderElectrico(){
       openModal(btn.dataset.viewcase, true);
     });
   });
-  queryAllIn(touchedRows, '[data-copy]').forEach(btn=>{
+  // Ver nota equivalente arriba: solo los botones 📋 reales, no los spans .tk-copy de OTS.
+  queryAllIn(touchedRows, '.copy-btn[data-copy]').forEach(btn=>{
     btn.addEventListener('click', async (e)=>{
       e.stopPropagation();
       const text = btn.dataset.copy;
