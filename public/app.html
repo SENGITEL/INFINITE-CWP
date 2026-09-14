@@ -1690,8 +1690,19 @@ async function commitRecordsChange(mutate, { alreadyApplied } = {}){
       if(res && res.value){
         const fresh = JSON.parse(res.value);
         mutate(fresh);
-        records = fresh;
-        render();
+        // Solo se vuelve a pintar si esta reconciliación con el servidor trajo algo
+        // realmente distinto de lo que la persona ya está viendo en pantalla (por
+        // ejemplo, cambios de otro gestor que llegaron justo mientras tanto). Antes
+        // se redibujaba SIEMPRE con este resultado, aunque fuera idéntico a lo ya
+        // mostrado — eso era lo que, unos segundos después de crear/editar un
+        // registro, se sentía como que la pantalla "esperaba, desaparecía y volvía
+        // a cargar" sin motivo.
+        if(JSON.stringify(fresh) !== JSON.stringify(records)){
+          records = fresh;
+          render();
+        } else {
+          records = fresh;
+        }
       }
     }catch(e){ /* si falla la relectura, se guarda igual la copia local */ }
     await saveRecords();
@@ -1711,9 +1722,14 @@ async function commitSitesChange(mutate){
       if(res && res.value){
         const fresh = JSON.parse(res.value);
         mutate(fresh);
-        sites = fresh;
-        buildSiteDatalist();
-        render();
+        // mismo criterio que en commitRecordsChange: no repintar si no cambió nada real
+        if(JSON.stringify(fresh) !== JSON.stringify(sites)){
+          sites = fresh;
+          buildSiteDatalist();
+          render();
+        } else {
+          sites = fresh;
+        }
       }
     }catch(e){ /* si falla la relectura, se guarda igual la copia local */ }
     await saveSites();
