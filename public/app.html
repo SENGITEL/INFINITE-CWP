@@ -1418,6 +1418,17 @@ let siteSearchTerm = "";
 let lastSyncAt = null;
 
 function uid(){ return 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+// Fecha de HOY en formato YYYY-MM-DD usando la zona horaria local del
+// navegador (NO usar toISOString().slice(0,10) para esto: toISOString
+// siempre devuelve la fecha en UTC, así que en Ecuador/Colombia (-05:00)
+// después de las 7:00 p.m. termina mostrando el día siguiente).
+function fechaLocalHoy(d){
+  d = d || new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  const dia = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${dia}`;
+}
 
 const TOAST_ICONS = { success:'✓', error:'✕', info:'ℹ' };
 
@@ -3583,7 +3594,7 @@ function openModal(id, readOnly){
   const defaultGestor = currentGestor();
   readOnly = !!readOnly;
   const r = editingId ? records.find(x=>x.id===editingId) : {
-    id: uid(), estado:'EN GESTION', otsSev1:'', fechaAlarma:new Date().toISOString().slice(0,10),
+    id: uid(), estado:'EN GESTION', otsSev1:'', fechaAlarma:fechaLocalHoy(),
     otsSev2:'', tpChange:'', serviceId:'', categoria:'', proceso:'', observacion:'', vip:'NO', seguridad:'', teams:'',
     contacto:'', actividad:'', salidaAt:null, cerradoAt:null,
     tipoProceso:'UNICO',
@@ -4087,7 +4098,7 @@ function openModal(id, readOnly){
       refreshTipoProcesoUI();
     }
     if(ingresoMode && justSwitchedIn){
-      fechaInput.value = new Date().toISOString().slice(0,10);
+      fechaInput.value = fechaLocalHoy();
     }
     regenerateTeams(false);
   }
