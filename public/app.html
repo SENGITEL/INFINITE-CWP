@@ -417,6 +417,12 @@
     box-shadow: 0 0 0 1px rgba(255,255,255,.18) inset, 0 0 4px -1px currentColor;
     cursor:default; vertical-align:middle;
   }
+  .ingreso-badge{
+    display:inline-flex; align-items:center; gap:3px; margin-left:6px;
+    background:rgba(245,158,11,.15); color:#f59e0b; border:1px solid rgba(245,158,11,.35);
+    padding:1px 6px; border-radius:999px; font-size:10px; font-weight:700;
+    vertical-align:middle; white-space:nowrap;
+  }
   .pill-electrico{
     background:var(--warn-bg); color:var(--warn); padding:3px 8px; border-radius:5px;
     font-size:10.5px; font-weight:700; display:inline-block; font-family:var(--font-mono);
@@ -1271,6 +1277,13 @@ function procesoLedHtml(proceso, categoria){
   if(!color) return null;
   return `<span class="proceso-led" style="background:${color};color:${color}" title="${escapeHtml(proceso || categoria || '')}"></span>`;
 }
+// Aviso para Huawei/Ericsson: si este Service ID tiene ahora mismo un INGRESO
+// activo (alguien en el sitio, sin SALIDA registrada), esa fila vive en la
+// pestaña "Ingresos" y no se ve desde aquí — este badge avisa igual.
+function ingresoBadgeHtml(serviceId){
+  if(!serviceId || !sitiosConIngreso.has(serviceId)) return '';
+  return `<span class="ingreso-badge" title="Hay un ingreso activo registrado para este sitio (personal en sitio, sin salida registrada)">${ROW_ICONS.person} Ingreso</span>`;
+}
 // Calcula, dentro de la lista visible, qué valores de un campo (p.ej. otsSev1/otsSev2)
 // están repetidos en más de un registro -> significa que varios sitios comparten el mismo
 // ticket/OTS. Devuelve un Map valorNormalizado -> índice de color (0-7), asignado de forma
@@ -1387,6 +1400,11 @@ let editingSiteId = null;
 let isModalOpen = false;
 let isInlineEditing = false; // true mientras el usuario tiene el foco en un campo editable de una tabla (evita que la sincronización automática le borre lo que está escribiendo
 let isCommitting = false; // true mientras un guardado optimista está reconciliando con el servidor por debajo (evita que el sondeo de fondo, que llega con la versión vieja, pise el cambio que la persona acaba de ver aplicado en pantalla)
+// Set de Service ID que en este momento tienen un INGRESO activo (alguien entró al
+// sitio y todavía no registra la SALIDA). Se recalcula en cada renderInner() y se
+// usa para avisar, en las vistas de Huawei/Ericsson, que ese sitio tiene personal
+// adentro aunque su fila de ingreso viva en la pestaña "Ingresos".
+let sitiosConIngreso = new Set();
 let searchTerm = "";
 let sortColumn = null;   // 'estado' | 'fechaAlarma' | 'serviceId' | null (null = orden por defecto)
 let sortDirection = 'asc'; // 'asc' | 'desc'
@@ -1483,6 +1501,7 @@ const ROW_ICONS = {
   pending: `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,
   reopen: `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-6.36L1 10"/></svg>`,
   salida: `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>`,
+  person: `<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,
 };
 let toastTimer = null;
 function showToast(msg, type){
@@ -2209,6 +2228,7 @@ function render(){
 
 function renderInner(){
   updateKpis();
+  sitiosConIngreso = new Set(records.filter(r => r.estado === 'INGRESO' && r.serviceId).map(r => r.serviceId));
   const ericssonCount = records.filter(r => (r.gestor||'ERICSSON') === 'ERICSSON' && r.estado !== 'CERRADO' && r.estado !== 'INGRESO' && r.estado !== 'SALIDA').length;
   const huaweiCount = records.filter(r => r.gestor === 'HUAWEI' && r.estado !== 'CERRADO' && r.estado !== 'INGRESO' && r.estado !== 'SALIDA').length;
   const ingresosCount = records.filter(r => r.estado === 'INGRESO').length;
@@ -2532,7 +2552,7 @@ function buildRowHtml(r, extraClass){
         <td class="mono">${dash(r.fechaAlarma)}</td>
         <td class="mono">${ticketCellHtml(r.tpChange, sharedTpChangeColors, searchTerm)}</td>
         <td class="mono">${procesoLedHtml(r.proceso, r.categoria) || ''}<span class="id-cell" style="font-weight:600;" data-id-menu="${r.id}" title="Clic para cambiar el estado eléctrico del sitio">${dashHl(r.serviceId, searchTerm)}</span></td>
-        <td class="obs-text">${dash(r.nombreSitio)}</td>
+        <td class="obs-text">${dash(r.nombreSitio)}${(r.estado!=='INGRESO' && r.estado!=='SALIDA') ? ingresoBadgeHtml(r.serviceId) : ''}</td>
         <td>${procesoHtml}</td>
         <td class="obs-text">
           <div class="obs-cell">
@@ -2577,7 +2597,11 @@ function buildRowHtml(r, extraClass){
     const vipCount = groupRecords.filter(x=>x.vip==='SI').length;
     const elecCount = groupRecords.filter(x=>x.reporteElectrico).length;
     const siteNames = [...new Set(groupRecords.map(x=>x.nombreSitio).filter(Boolean))];
-    const chips = groupRecords.map(x=>`<span class="sid-chip id-cell" data-id-menu="${x.id}" title="${escapeHtml([x.nombreSitio, x.categoria].filter(Boolean).join(' · '))} — Clic para cambiar el estado eléctrico">${procesoLedHtml(x.proceso, x.categoria) || ''}${escapeHtml(x.serviceId)}</span>`).join('');
+    const chips = groupRecords.map(x=>{
+      const tieneIngreso = sitiosConIngreso.has(x.serviceId);
+      const tip = [x.nombreSitio, x.categoria].filter(Boolean).concat(tieneIngreso ? ['⚠ Ingreso activo en este sitio'] : []).join(' · ');
+      return `<span class="sid-chip id-cell" data-id-menu="${x.id}" title="${escapeHtml(tip)} — Clic para cambiar el estado eléctrico">${procesoLedHtml(x.proceso, x.categoria) || ''}${escapeHtml(x.serviceId)}${tieneIngreso ? ` ${ROW_ICONS.person}` : ''}</span>`;
+    }).join('');
     const allTeams = groupRecords.map(x=>x.teams).filter(Boolean).join('\n\n');
     const allTeamsHtml = boldServiceIdsHtml(allTeams, groupRecords.map(x=>x.serviceId));
     const tkSharing = closeTkCluster(groupRecords);
