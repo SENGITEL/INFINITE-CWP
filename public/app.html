@@ -408,6 +408,15 @@
     background:var(--danger-bg); color:var(--danger); padding:3px 8px; border-radius:5px;
     font-size:11.5px; font-weight:700; display:inline-block; border:1px solid rgba(255,77,109,0.3);
   }
+  /* Punto de color para el campo Proceso: reemplaza el texto largo (repetido en
+     muchas filas de un masivo) por un LED del color de su categoría. El texto
+     completo sigue disponible al pasar el mouse (title). */
+  .proceso-led{
+    display:inline-block; width:6px; height:6px; border-radius:50%;
+    margin-right:4px;
+    box-shadow: 0 0 0 1px rgba(255,255,255,.18) inset, 0 0 4px -1px currentColor;
+    cursor:default; vertical-align:middle;
+  }
   .pill-electrico{
     background:var(--warn-bg); color:var(--warn); padding:3px 8px; border-radius:5px;
     font-size:10.5px; font-weight:700; display:inline-block; font-family:var(--font-mono);
@@ -1218,7 +1227,8 @@ const PROCESO_OPTIONS = [
   "Tema Legal",
   "En Monitoreo",
   "Con afectación",
-  "Sin afectación"
+  "Sin afectación",
+  "Normalizado"
 ];
 // Procesos que deben resaltarse en rojo en la tabla por ser de mayor criticidad.
 const PROCESO_CRITICOS = [
@@ -1229,6 +1239,37 @@ const PROCESO_CRITICOS = [
 function isProcesoCritico(proceso){
   if(!proceso) return false;
   return PROCESO_CRITICOS.some(p => p.toLowerCase() === proceso.toLowerCase());
+}
+function normalizeProcesoText(s){
+  return String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+}
+// Mapa de color/LED del Proceso: en los registros masivos el proceso ya viene
+// definido y se repite igual en muchas filas, así que en vez de mostrar el
+// texto completo se muestra un punto de color (el texto sigue disponible al
+// pasar el mouse, como tooltip). El orden de las reglas importa: se evalúa de
+// arriba hacia abajo y se usa la primera que aplique; si ninguna aplica, se
+// sigue mostrando el texto tal como antes.
+const PROCESO_LED_RULES = [
+  { color:'#ef4444', test: p => { const n = normalizeProcesoText(p); return isProcesoCritico(p) || n.includes('caida directa') || n.includes('culmina respaldo'); } }, // Rojo: caída directa o culmina respaldo
+  { color:'#f97316', test: p => normalizeProcesoText(p).includes('generador') }, // Naranja: en generador
+  { color:'#eab308', test: p => normalizeProcesoText(p).includes('bateria') }, // Amarillo: en baterías
+  { color:'#92400e', test: p => { const n = normalizeProcesoText(p); return n.includes('celda') || n.includes('degradacion'); } }, // Marrón: celdas o degradación
+  { color:'#3b82f6', test: p => normalizeProcesoText(p).includes('mg portatil') }, // Azul: Mg Portátil
+  { color:'#22c55e', test: p => normalizeProcesoText(p).includes('normalizado') } // Verde: normalizado
+];
+// En los registros MASIVO normalmente no se llena el campo "Proceso" (queda
+// implícito en el botón rápido que se activó al crearlo: En Baterías, En
+// Generador, Caída Directa o Change, guardado en r.categoria), así que si el
+// proceso no matchea ninguna regla, se intenta de nuevo con la categoría.
+function getProcesoLed(proceso, categoria){
+  let rule = PROCESO_LED_RULES.find(r => r.test(proceso));
+  if(!rule && categoria) rule = PROCESO_LED_RULES.find(r => r.test(categoria));
+  return rule ? rule.color : null;
+}
+function procesoLedHtml(proceso, categoria){
+  const color = getProcesoLed(proceso, categoria);
+  if(!color) return null;
+  return `<span class="proceso-led" style="background:${color};color:${color}" title="${escapeHtml(proceso || categoria || '')}"></span>`;
 }
 // Calcula, dentro de la lista visible, qué valores de un campo (p.ej. otsSev1/otsSev2)
 // están repetidos en más de un registro -> significa que varios sitios comparten el mismo
@@ -2490,7 +2531,7 @@ function buildRowHtml(r, extraClass){
         </td>
         <td class="mono">${dash(r.fechaAlarma)}</td>
         <td class="mono">${ticketCellHtml(r.tpChange, sharedTpChangeColors, searchTerm)}</td>
-        <td class="mono"><span class="id-cell ${getIdColorClass(r)}" style="font-weight:600;" data-id-menu="${r.id}" title="Clic para cambiar el estado eléctrico del sitio">${dashHl(r.serviceId, searchTerm)}</span></td>
+        <td class="mono">${procesoLedHtml(r.proceso, r.categoria) || ''}<span class="id-cell" style="font-weight:600;" data-id-menu="${r.id}" title="Clic para cambiar el estado eléctrico del sitio">${dashHl(r.serviceId, searchTerm)}</span></td>
         <td class="obs-text">${dash(r.nombreSitio)}</td>
         <td>${procesoHtml}</td>
         <td class="obs-text">
@@ -2536,7 +2577,7 @@ function buildRowHtml(r, extraClass){
     const vipCount = groupRecords.filter(x=>x.vip==='SI').length;
     const elecCount = groupRecords.filter(x=>x.reporteElectrico).length;
     const siteNames = [...new Set(groupRecords.map(x=>x.nombreSitio).filter(Boolean))];
-    const chips = groupRecords.map(x=>`<span class="sid-chip id-cell ${getIdColorClass(x)}" data-id-menu="${x.id}" title="${escapeHtml([x.nombreSitio, x.categoria].filter(Boolean).join(' · '))} — Clic para cambiar el estado eléctrico">${escapeHtml(x.serviceId)}</span>`).join('');
+    const chips = groupRecords.map(x=>`<span class="sid-chip id-cell" data-id-menu="${x.id}" title="${escapeHtml([x.nombreSitio, x.categoria].filter(Boolean).join(' · '))} — Clic para cambiar el estado eléctrico">${procesoLedHtml(x.proceso, x.categoria) || ''}${escapeHtml(x.serviceId)}</span>`).join('');
     const allTeams = groupRecords.map(x=>x.teams).filter(Boolean).join('\n\n');
     const allTeamsHtml = boldServiceIdsHtml(allTeams, groupRecords.map(x=>x.serviceId));
     const tkSharing = closeTkCluster(groupRecords);
@@ -2928,7 +2969,7 @@ function renderElectrico(){
         <td class="mono">${dash(r.fechaAlarma)}</td>
         <td class="mono">${ticketCellHtml(r.otsSev1, sharedOts1ColorsElectrico, electricoSearchTerm)}</td>
         <td class="mono">${ticketCellHtml(r.otsSev2, sharedOts2ColorsElectrico, electricoSearchTerm)}</td>
-        <td class="mono" style="color:var(--text); font-weight:600;">${dashHl(r.serviceId, electricoSearchTerm)}</td>
+        <td class="mono" style="color:var(--text); font-weight:600;">${procesoLedHtml(r.proceso, r.categoria) || ''}${dashHl(r.serviceId, electricoSearchTerm)}</td>
         <td class="obs-text">${dashHl(r.nombreSitio, electricoSearchTerm)}</td>
         <td>${isProcesoCritico(r.proceso) ? `<span class="pill-indisponible">${highlightText(r.proceso, electricoSearchTerm)}</span>` : dashHl(r.proceso, electricoSearchTerm)}</td>
         <td onclick="event.stopPropagation();">
