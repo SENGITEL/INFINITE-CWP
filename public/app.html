@@ -3953,7 +3953,7 @@ function openModal(id, readOnly){
   function parseServiceIdList(raw){
     const seen = new Set();
     const out = [];
-    (raw||'').split(',').map(s=>s.trim()).filter(s=>s!=='').forEach(id=>{
+    (raw||'').split(',').map(s=>s.trim().toUpperCase()).filter(s=>s!=='').forEach(id=>{
       const key = id.toLowerCase();
       if(!seen.has(key)){ seen.add(key); out.push(id); }
     });
@@ -4386,16 +4386,40 @@ function openModal(id, readOnly){
     let finalServiceId, finalCategoria;
     if(tipoProceso === 'MASIVO' && editingId){
       const activeCat = MASIVO_CATS.find(c => masivoActive[c.key]);
-      finalServiceId = activeCat ? activeCat.input.value.trim() : r.serviceId;
+      finalServiceId = activeCat ? activeCat.input.value.trim().toUpperCase() : r.serviceId;
       finalCategoria = activeCat ? activeCat.label : (r.categoria || '');
     } else {
-      finalServiceId = document.getElementById('f_serviceId').value.trim();
+      finalServiceId = document.getElementById('f_serviceId').value.trim().toUpperCase();
       finalCategoria = '';
     }
 
     const isNewSeguimientoRequest = seguimientoCb.checked && seguimientoSessionBumps > 0;
     const seguimientoSolicitadoCount = (r.seguimientoSolicitadoCount || 0) + seguimientoSessionBumps;
     const nuevoEstado = document.getElementById('f_estado').value;
+
+    // En un registro único (no INGRESO/SALIDA, donde OTS Sev3/4 no aplican) siempre debe
+    // existir un TK: al menos uno de OTS Sev 3 / OTS Sev 4 / TP Change diligenciado,
+    // y todo lo que se llene en esos 3 campos debe ser estrictamente numérico.
+    if(!(nuevoEstado === 'INGRESO' || nuevoEstado === 'SALIDA')){
+      const tkFieldsUnico = [
+        { label: 'OTS Sev 3', value: document.getElementById('f_otsSev1').value.trim(), el: document.getElementById('f_otsSev1') },
+        { label: 'OTS Sev 4', value: document.getElementById('f_otsSev2').value.trim(), el: document.getElementById('f_otsSev2') },
+        { label: 'TP Change', value: document.getElementById('f_tpChange').value.trim(), el: document.getElementById('f_tpChange') },
+      ];
+      const tkFilledUnico = tkFieldsUnico.filter(f => f.value !== '');
+      if(tkFilledUnico.length === 0){
+        showToast('Debes diligenciar al menos un TK: OTS Sev 3, OTS Sev 4 o TP Change', 'info');
+        tkFieldsUnico[0].el.focus();
+        return;
+      }
+      const tkNoNumericoUnico = tkFilledUnico.find(f => !/^\d+$/.test(f.value));
+      if(tkNoNumericoUnico){
+        showToast(`${tkNoNumericoUnico.label} debe contener solo números`, 'info');
+        tkNoNumericoUnico.el.focus();
+        return;
+      }
+    }
+
     if(nuevoEstado === 'CERRADO'){
       const candidato = {
         tpChange: document.getElementById('f_tpChange').value.trim(),
@@ -4516,7 +4540,7 @@ function openMasivoGroupModal(groupKey){
   function parseServiceIdList(raw){
     const seen = new Set();
     const out = [];
-    (raw||'').split(',').map(s=>s.trim()).filter(s=>s!=='').forEach(id=>{
+    (raw||'').split(',').map(s=>s.trim().toUpperCase()).filter(s=>s!=='').forEach(id=>{
       const key = id.toLowerCase();
       if(!seen.has(key)){ seen.add(key); out.push(id); }
     });
@@ -5183,6 +5207,21 @@ themeToggleBtn.addEventListener('click', async ()=>{
 });
 
 loadThemePreference();
+
+/* ---------------- MAYÚSCULAS AUTOMÁTICAS EN LOS CAMPOS DE SERVICE ID ----------------
+   Todos los inputs de Service ID (único, cada categoría del masivo y los del modal de
+   edición de lote) comparten list="siteIdList", así que un solo listener delegado a nivel
+   documento alcanza para todos, incluidos los que se crean dinámicamente al abrir un modal.
+   Se preserva la posición del cursor para no interrumpir al agente mientras escribe. */
+document.addEventListener('input', (e)=>{
+  const el = e.target;
+  if(!(el instanceof HTMLInputElement) || el.getAttribute('list') !== 'siteIdList') return;
+  const upper = el.value.toUpperCase();
+  if(upper === el.value) return;
+  const start = el.selectionStart, end = el.selectionEnd;
+  el.value = upper;
+  if(start !== null && end !== null) el.setSelectionRange(start, end);
+});
 
 /* ---------------- CLIC PARA COPIAR TK / CTRL+CLIC PARA ABRIR EN LA PLATAFORMA ----------------
    (OTS Sev3, OTS Sev4, TP Change)
