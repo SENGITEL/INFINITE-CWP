@@ -3317,12 +3317,7 @@ function renderElectrico(){
   queryAllIn(touchedRows, 'tr').forEach(tr=>{
     tr.addEventListener('click', (e)=>{
       // el clic en la fila ya NO abre el registro, así el agente puede seleccionar y copiar texto libremente.
-      // Usa el botón 👁 o doble clic para ver el registro completo.
-    });
-    tr.addEventListener('dblclick', (e)=>{
-      if(e.target.closest('button')) return;
-      const id = tr.dataset.id;
-      if(id) openModal(id, true);
+      // Usa el botón 👁 para ver el registro completo.
     });
   });
   queryAllIn(touchedRows, '[data-viewcase]').forEach(btn=>{
