@@ -541,6 +541,29 @@
   body.hide-ingresos-extra-cols #casesView table td:nth-child(18){ display:table-cell; }
   body.hide-ingresos-extra-cols #casesView table th:nth-child(19),
   body.hide-ingresos-extra-cols #casesView table td:nth-child(19){ display:table-cell; }
+  /* Columna "Contacto": es un campo del formulario de Ingreso/TP Change, así que solo
+     se muestra en esas dos pestañas (en el resto de pestañas ese campo no aplica). */
+  #casesView table th:nth-child(22),
+  #casesView table td:nth-child(22){ display:none; }
+  body.hide-ingresos-extra-cols #casesView table th:nth-child(22),
+  body.hide-ingresos-extra-cols #casesView table td:nth-child(22){ display:table-cell; }
+  body.hide-tpchange-extra-cols #casesView table th:nth-child(22),
+  body.hide-tpchange-extra-cols #casesView table td:nth-child(22){ display:table-cell; }
+  /* Columnas "Inicio (TP Change)" / "Cierre (TP Change)": solo aplican al formulario de
+     TP Change, así que solo se muestran en esa pestaña. */
+  #casesView table th:nth-child(23),
+  #casesView table td:nth-child(23),
+  #casesView table th:nth-child(24),
+  #casesView table td:nth-child(24){ display:none; }
+  body.hide-tpchange-extra-cols #casesView table th:nth-child(23),
+  body.hide-tpchange-extra-cols #casesView table td:nth-child(23),
+  body.hide-tpchange-extra-cols #casesView table th:nth-child(24),
+  body.hide-tpchange-extra-cols #casesView table td:nth-child(24){ display:table-cell; }
+  /* Columna "Celular": también es un campo del formulario de TP Change, solo se muestra ahí. */
+  #casesView table th:nth-child(25),
+  #casesView table td:nth-child(25){ display:none; }
+  body.hide-tpchange-extra-cols #casesView table th:nth-child(25),
+  body.hide-tpchange-extra-cols #casesView table td:nth-child(25){ display:table-cell; }
   /* Columna "Fecha y hora de cierre": solo se muestra en la pestaña Cerrados. */
   #casesView table th:nth-child(20),
   #casesView table td:nth-child(20){ display:none; }
@@ -559,14 +582,22 @@
   #casesView table td:nth-child(21){ display:none; }
   body.show-reporte-resumen #casesView table th:nth-child(21),
   body.show-reporte-resumen #casesView table td:nth-child(21){ display:table-cell; }
-  /* En la pestaña TP Change, las columnas Proceso, Baterías y Generador no aportan
-     (todas las filas son del mismo tipo de caso), así que se ocultan ahí. */
-  body.hide-tpchange-extra-cols #casesView table th:nth-child(8),
-  body.hide-tpchange-extra-cols #casesView table td:nth-child(8),
+  /* En la pestaña TP Change, Baterías y Generador no aportan (todas las filas son del
+     mismo tipo de caso), así que se ocultan ahí. "Proceso" sí es un campo del formulario
+     de TP Change (Sin/Con afectación), así que esa columna se conserva visible. Las 4
+     columnas de reporte eléctrico tampoco aplican a este formulario, así que se ocultan. */
   body.hide-tpchange-extra-cols #casesView table th:nth-child(11),
   body.hide-tpchange-extra-cols #casesView table td:nth-child(11),
   body.hide-tpchange-extra-cols #casesView table th:nth-child(12),
-  body.hide-tpchange-extra-cols #casesView table td:nth-child(12){ display:none; }
+  body.hide-tpchange-extra-cols #casesView table td:nth-child(12),
+  body.hide-tpchange-extra-cols #casesView table th:nth-child(13),
+  body.hide-tpchange-extra-cols #casesView table td:nth-child(13),
+  body.hide-tpchange-extra-cols #casesView table th:nth-child(14),
+  body.hide-tpchange-extra-cols #casesView table td:nth-child(14),
+  body.hide-tpchange-extra-cols #casesView table th:nth-child(15),
+  body.hide-tpchange-extra-cols #casesView table td:nth-child(15),
+  body.hide-tpchange-extra-cols #casesView table th:nth-child(16),
+  body.hide-tpchange-extra-cols #casesView table td:nth-child(16){ display:none; }
   /* En la hoja "Reportes Eléctricos" tampoco son necesarias: se ocultan siempre. */
   #electricoTable th:nth-child(9),
   #electricoTable td:nth-child(9),
@@ -1122,6 +1153,10 @@
               <th>Salida</th>
               <th>Fecha y hora de cierre</th>
               <th>Reporte Eléctrico (resumen)</th>
+              <th>Contacto</th>
+              <th>Inicio (TP Change)</th>
+              <th>Cierre (TP Change)</th>
+              <th>Celular</th>
             </tr>
           </thead>
           <tbody id="tbody"></tbody>
@@ -1641,6 +1676,27 @@ function fechaLocalHoy(d){
   const dia = String(d.getDate()).padStart(2,'0');
   return `${y}-${m}-${dia}`;
 }
+// Fecha y hora ACTUALES en formato "YYYY-MM-DDTHH:mm", en zona horaria local, para
+// prellenar los campos datetime-local (p. ej. "Fecha y hora de inicio" de un TP Change).
+function nowLocalDatetimeValue(d){
+  d = d || new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  const dia = String(d.getDate()).padStart(2,'0');
+  const h = String(d.getHours()).padStart(2,'0');
+  const min = String(d.getMinutes()).padStart(2,'0');
+  return `${y}-${m}-${dia}T${h}:${min}`;
+}
+// Convierte el valor de un input datetime-local ("YYYY-MM-DDTHH:mm") a una etiqueta
+// legible "DD/MM/YYYY HH:mm" para el resumen de Teams.
+function formatDatetimeLocalLabel(v){
+  if(!v) return '';
+  const [datePart, timePart] = v.split('T');
+  if(!datePart) return v;
+  const [y,m,dia] = datePart.split('-');
+  if(!y || !m || !dia) return v;
+  return `${dia}/${m}/${y}${timePart ? ' ' + timePart : ''}`;
+}
 
 const TOAST_ICONS = { success:'✓', error:'✕', info:'ℹ' };
 
@@ -1747,11 +1803,11 @@ function skeletonRowsHtml(colCount, rows){
 // trae los datos, para que la tabla no se vea en blanco un instante durante la sincronización.
 function showTableSkeleton(){
   const map = {
-    ERICSSON: { tbody:'tbody', empty:'emptyState', cols:20 },
-    HUAWEI:   { tbody:'tbody', empty:'emptyState', cols:20 },
-    INGRESOS: { tbody:'tbody', empty:'emptyState', cols:20 },
-    CERRADOS: { tbody:'tbody', empty:'emptyState', cols:20 },
-    TPCHANGE: { tbody:'tbody', empty:'emptyState', cols:20 },
+    ERICSSON: { tbody:'tbody', empty:'emptyState', cols:25 },
+    HUAWEI:   { tbody:'tbody', empty:'emptyState', cols:25 },
+    INGRESOS: { tbody:'tbody', empty:'emptyState', cols:25 },
+    CERRADOS: { tbody:'tbody', empty:'emptyState', cols:25 },
+    TPCHANGE: { tbody:'tbody', empty:'emptyState', cols:25 },
     ELECTRICO:{ tbody:'electricoTbody', empty:'electricoEmptyState', cols:22 },
     SITES:    { tbody:'sitesTbody', empty:'sitesEmptyState', cols:17 }
   };
@@ -2822,6 +2878,10 @@ function buildRowHtml(r, extraClass){
         <td class="mono">${r.salidaAt ? formatDateTime(r.salidaAt) : '<span class="empty-dash">—</span>'}</td>
         <td class="mono">${r.cerradoAt ? formatDateTime(r.cerradoAt) : '<span class="empty-dash">—</span>'}</td>
         <td class="mono">${reporteResumenCellHtml(r)}</td>
+        <td class="obs-text">${dash(r.contacto)}</td>
+        <td class="mono">${r.changeInicio ? formatDatetimeLocalLabel(r.changeInicio) : '<span class="empty-dash">—</span>'}</td>
+        <td class="mono">${r.changeCierre ? formatDatetimeLocalLabel(r.changeCierre) : '<span class="empty-dash">—</span>'}</td>
+        <td class="mono">${dash(r.celular)}</td>
       </tr>
     `;
   }
@@ -2901,6 +2961,10 @@ function buildRowHtml(r, extraClass){
         <td><span class="empty-dash">—</span></td>
         <td class="mono">${(()=>{ const closedAts = groupRecords.map(x=>x.cerradoAt).filter(Boolean); return closedAts.length ? formatDateTime(Math.max(...closedAts)) : '<span class="empty-dash">—</span>'; })()}</td>
         <td class="mono">${(()=>{ const resumenes = groupRecords.map(x=>reporteResumenTexto(x)).filter(Boolean); if(resumenes.length===0) return '<span class="empty-dash">—</span>'; const texto = resumenes.join('\n\n'); return `<div class="copy-cell"><span class="text-flag" title="${escapeHtml(texto)}">Texto</span><button type="button" class="copy-btn" data-copy="${escapeHtml(texto)}" title="Copiar">📋</button></div>`; })()}</td>
+        <td class="obs-text"><span class="empty-dash">—</span></td>
+        <td class="mono"><span class="empty-dash">—</span></td>
+        <td class="mono"><span class="empty-dash">—</span></td>
+        <td class="mono"><span class="empty-dash">—</span></td>
       </tr>
     `;
   }
@@ -4000,6 +4064,22 @@ function generateIngresoTeamsText(r){
   return '|INGRESO|' + parts.join('|') + '|';
 }
 
+// Mensaje tipo Teams para registros de TP (CHANGE): Service ID/Nombre, TP Change, Contacto,
+// ventana de fecha/hora de inicio-cierre, Proceso (Sin/Con afectación) y Observación.
+function generateChangeTeamsText(r){
+  const siteLabel = r.nombreSitio ? `${r.serviceId||''} - ${r.nombreSitio}` : (r.serviceId||'');
+  const parts = [siteLabel];
+  if((r.tpChange||'').trim() !== '') parts.push(`TP ${r.tpChange.trim()}`);
+  if((r.contacto||'').trim() !== '') parts.push(r.contacto.trim());
+  if((r.celular||'').trim() !== '') parts.push(r.celular.trim());
+  const inicioLbl = formatDatetimeLocalLabel(r.changeInicio);
+  const cierreLbl = formatDatetimeLocalLabel(r.changeCierre);
+  if(inicioLbl || cierreLbl) parts.push(`${inicioLbl || '—'} a ${cierreLbl || '—'}`);
+  if((r.proceso||'').trim() !== '') parts.push(r.proceso.trim());
+  if((r.observacion||'').trim() !== '') parts.push(r.observacion.trim());
+  return '|CHANGE|' + parts.join('|') + '|';
+}
+
 /* ---------------- CASE MODAL ---------------- */
 
 function openModal(id, readOnly){
@@ -4024,7 +4104,7 @@ function openModal(id, readOnly){
   const r = editingId ? records.find(x=>x.id===editingId) : {
     id: uid(), estado:'EN GESTION', otsSev1:'', fechaAlarma:fechaLocalHoy(),
     otsSev2:'', tpChange:'', serviceId:'', categoria:'', proceso:'', observacion:'', vip:'NO', seguridad:'', teams:'',
-    contacto:'', actividad:'', salidaAt:null, cerradoAt:null,
+    contacto:'', actividad:'', celular:'', changeInicio:'', changeCierre:'', salidaAt:null, cerradoAt:null,
     tipoProceso:'UNICO',
     gestor: defaultGestor, reporteElectrico:false, reporteElectricoEnviado:false,
     reporteElectricoTexto:'', reporteElectricoProveedor:'', reporteElectricoEstado:'',
@@ -4066,7 +4146,7 @@ function openModal(id, readOnly){
         </div>
         <div class="full" id="unicoBox" style="${r.tipoProceso==='MASIVO' ? 'display:none;' : ''}">
           <div class="unico-grid">
-            <div>
+            <div id="serviceIdFieldBox">
               <label>Service ID</label>
               <input type="text" id="f_serviceId" list="siteIdList" value="${escapeHtml(r.serviceId)}" placeholder="PA213" />
             </div>
@@ -4085,9 +4165,28 @@ function openModal(id, readOnly){
               <label>Contacto</label>
               <input type="text" id="f_contacto" value="${escapeHtml(r.contacto||'')}" placeholder="Nombre de quien reporta / atiende" />
             </div>
-            <div>
+            <div id="actividadFieldBox">
               <label>Actividad</label>
               <input type="text" id="f_actividad" value="${escapeHtml(r.actividad||'')}" placeholder="Qué se va a realizar" />
+            </div>
+            <div id="celularFieldBox" style="display:none;">
+              <label>Celular</label>
+              <input type="text" id="f_celular" value="${escapeHtml(r.celular||'')}" placeholder="Número de contacto" inputmode="numeric" />
+            </div>
+          </div>
+        </div>
+        <div class="full" id="changeFieldsBox" style="${r.estado==='TP (CHANGE)' ? '' : 'display:none;'}">
+          <label>Service ID (uno o varios)</label>
+          <input type="text" id="f_change_ids" list="siteIdList" value="${escapeHtml(r.serviceId)}" placeholder="PA213 (o pega varios: BT200, AU101, AU501)" />
+          <div id="changeIdsHint"></div>
+          <div class="unico-grid" style="margin-top:10px;">
+            <div>
+              <label>Fecha y hora de inicio</label>
+              <input type="datetime-local" id="f_change_inicio" value="${escapeHtml(r.changeInicio||'')}" />
+            </div>
+            <div>
+              <label>Fecha y hora de cierre</label>
+              <input type="datetime-local" id="f_change_cierre" value="${escapeHtml(r.changeCierre||'')}" />
             </div>
           </div>
         </div>
@@ -4126,7 +4225,7 @@ function openModal(id, readOnly){
           <label>OTS Sev 3</label>
           <input type="text" id="f_otsSev1" value="${escapeHtml(r.otsSev1)}" inputmode="numeric" />
         </div>
-        <div>
+        <div id="fieldFechaAlarma">
           <label>Fecha de la alarma</label>
           <input type="date" id="f_fecha" value="${escapeHtml(r.fechaAlarma)}" />
         </div>
@@ -4207,6 +4306,17 @@ function openModal(id, readOnly){
       const fObs = document.getElementById('fieldObservacion'); if(fObs) fObs.style.display = 'none';
       const fTipo = document.getElementById('fieldTipoProceso'); if(fTipo) fTipo.style.display = 'none';
       const tpLbl = document.getElementById('f_tpChange_label'); if(tpLbl) tpLbl.textContent = 'TP asociado (si aplica)';
+    } else if(r.estado === 'TP (CHANGE)'){
+      document.getElementById('unicoBox').style.display = 'none';
+      const fOts1 = document.getElementById('fieldOtsSev1'); if(fOts1) fOts1.style.display = 'none';
+      const fOts2 = document.getElementById('fieldOtsSev2'); if(fOts2) fOts2.style.display = 'none';
+      const fFecha = document.getElementById('fieldFechaAlarma'); if(fFecha) fFecha.style.display = 'none';
+      const fTipo = document.getElementById('fieldTipoProceso'); if(fTipo) fTipo.style.display = 'none';
+      const actBox = document.getElementById('actividadFieldBox'); if(actBox) actBox.style.display = 'none';
+      const celBox = document.getElementById('celularFieldBox'); if(celBox) celBox.style.display = '';
+      const ingresoBox = document.getElementById('ingresoFieldsBox'); if(ingresoBox) ingresoBox.style.display = '';
+      const changeBox = document.getElementById('changeFieldsBox'); if(changeBox) changeBox.style.display = '';
+      document.getElementById('f_change_ids').value = r.serviceId || '';
     }
     if(r.tipoProceso === 'MASIVO' && r.categoria){
       document.getElementById('f_tipo_masivo').classList.add('active-tipo');
@@ -4243,7 +4353,7 @@ function openModal(id, readOnly){
     return;
   }
 
-  const CASE_FORM_FIELD_IDS = ['f_estado','f_serviceId','f_nombre','f_otsSev1','f_fecha','f_otsSev2','f_tpChange','f_proceso','f_observacion','f_teams','f_contacto','f_actividad'];
+  const CASE_FORM_FIELD_IDS = ['f_estado','f_serviceId','f_nombre','f_otsSev1','f_fecha','f_otsSev2','f_tpChange','f_proceso','f_observacion','f_teams','f_contacto','f_actividad','f_change_ids','f_change_inicio','f_change_cierre','f_celular'];
   const initialSnapshot = {};
   CASE_FORM_FIELD_IDS.forEach(id => { initialSnapshot[id] = document.getElementById(id).value; });
   initialSnapshot['f_reporteElectrico'] = document.getElementById('f_reporteElectrico').checked;
@@ -4491,53 +4601,134 @@ function openModal(id, readOnly){
 
   /* ---- Modo INGRESO: al elegir el estado "INGRESO" el formulario se reduce a los campos
      relevantes (Fecha con la actual, Service ID, Nombre, Contacto, Actividad y TP asociado
-     si aplica) y oculta lo que no aplica (OTS Sev3/4, Proceso, Observación, masivo, eléctrico). ---- */
+     si aplica) y oculta lo que no aplica (OTS Sev3/4, Proceso, Observación, masivo, eléctrico).
+     Modo TP (CHANGE): se reduce a Service ID (uno o varios), TP Change, Contacto, fecha/hora
+     de inicio y cierre, Proceso (solo Sin/Con afectación) y Observación. ---- */
   const estadoSelect = document.getElementById('f_estado');
   const fechaInput = document.getElementById('f_fecha');
+  const fieldFechaAlarma = document.getElementById('fieldFechaAlarma');
   const ingresoFieldsBox = document.getElementById('ingresoFieldsBox');
+  const actividadFieldBox = document.getElementById('actividadFieldBox');
+  const changeFieldsBox = document.getElementById('changeFieldsBox');
+  const changeIdsInput = document.getElementById('f_change_ids');
+  const changeIdsHint = document.getElementById('changeIdsHint');
+  const changeInicioInput = document.getElementById('f_change_inicio');
   const fieldOtsSev1 = document.getElementById('fieldOtsSev1');
   const fieldOtsSev2 = document.getElementById('fieldOtsSev2');
   const fieldProceso = document.getElementById('fieldProceso');
   const fieldObservacion = document.getElementById('fieldObservacion');
   const fieldTipoProceso = document.getElementById('fieldTipoProceso');
   const fieldReporteElectrico = document.getElementById('fieldReporteElectrico');
+  const serviceIdFieldBox = document.getElementById('serviceIdFieldBox');
+  const celularFieldBox = document.getElementById('celularFieldBox');
   const tpChangeLabel = document.getElementById('f_tpChange_label');
+  const procesoSelect = document.getElementById('f_proceso');
+  const CHANGE_PROCESO_OPTIONS = ['Sin afectación', 'Con afectación'];
   let prevEstadoWasIngreso = (estadoSelect.value === 'INGRESO' || estadoSelect.value === 'SALIDA');
+  let prevEstadoWasChange = (estadoSelect.value === 'TP (CHANGE)');
 
-  function updateIngresoModeUI(justSwitchedIn){
+  function setProcesoOptions(isChange){
+    const current = procesoSelect.value;
+    const options = isChange ? CHANGE_PROCESO_OPTIONS : PROCESO_OPTIONS;
+    procesoSelect.innerHTML =
+      `<option value="" ${!current ? 'selected' : ''}>— Seleccionar —</option>` +
+      options.map(opt => `<option value="${escapeHtml(opt)}" ${current===opt ? 'selected' : ''}>${escapeHtml(opt)}</option>`).join('') +
+      ((current && !options.includes(current)) ? `<option value="${escapeHtml(current)}" selected>${escapeHtml(current)}</option>` : '');
+  }
+
+  function renderChangeIdsPreview(){
+    const ids = parseServiceIdList(changeIdsInput.value);
+    if(ids.length === 0){ changeIdsHint.innerHTML = ''; return; }
+    if(ids.length === 1){
+      const site = lookupSiteById(ids[0]);
+      changeIdsHint.innerHTML = site
+        ? `<div class="site-name-hint ${siteHintClass(normalizeVip(site.vip), normalizeVip(site.seguridad))}">✓ Encontrado en base de sitios${normalizeVip(site.vip) ? ' · VIP: ' + normalizeVip(site.vip) : ''}${normalizeVip(site.seguridad) ? ' · Seguridad: ' + normalizeVip(site.seguridad) : ''}</div>`
+        : `<div class="site-name-hint missing">⚠ Este Service ID no está en la base de sitios</div>`;
+      return;
+    }
+    const rows = ids.map(id=>{
+      const site = lookupSiteById(id);
+      return `<span class="bulk-chip"><span class="dot ${site ? 'found' : 'missing'}"></span>${escapeHtml(id)}${site ? ' — ' + escapeHtml(site.siteName||'') : ' (no está en la base de sitios)'}</span>`;
+    }).join('');
+    changeIdsHint.innerHTML = `
+      <div class="bulk-box">
+        <div class="bulk-title">📦 Se creará 1 registro TP (CHANGE) por cada Service ID (${ids.length} en total)</div>
+        <div class="bulk-chip-list">${rows}</div>
+      </div>
+    `;
+  }
+  function refreshSaveButtonLabel(){
+    if(!updateSaveButtonLabelChange()) updateSaveButtonLabel();
+  }
+  changeIdsInput.addEventListener('input', ()=>{ renderChangeIdsPreview(); refreshSaveButtonLabel(); });
+  if(editingId) renderChangeIdsPreview();
+
+  function updateSaveButtonLabelChange(){
+    const saveBtn = document.getElementById('modalSave');
+    if(!saveBtn) return;
+    if(estadoSelect.value === 'TP (CHANGE)' && !editingId){
+      const n = parseServiceIdList(changeIdsInput.value).length;
+      saveBtn.textContent = n > 1 ? `Crear ${n} registros` : 'Crear registro';
+      return true;
+    }
+    return false;
+  }
+
+  function updateIngresoModeUI(justSwitchedIn, justSwitchedIntoChange){
     const ingresoMode = (estadoSelect.value === 'INGRESO' || estadoSelect.value === 'SALIDA');
-    ingresoFieldsBox.style.display = ingresoMode ? '' : 'none';
-    fieldOtsSev1.style.display = ingresoMode ? 'none' : '';
-    fieldOtsSev2.style.display = ingresoMode ? 'none' : '';
+    const changeMode = estadoSelect.value === 'TP (CHANGE)';
+    ingresoFieldsBox.style.display = (ingresoMode || changeMode) ? '' : 'none';
+    actividadFieldBox.style.display = changeMode ? 'none' : '';
+    if(celularFieldBox) celularFieldBox.style.display = changeMode ? '' : 'none';
+    changeFieldsBox.style.display = changeMode ? '' : 'none';
+    if(fieldFechaAlarma) fieldFechaAlarma.style.display = changeMode ? 'none' : '';
+    fieldOtsSev1.style.display = (ingresoMode || changeMode) ? 'none' : '';
+    fieldOtsSev2.style.display = (ingresoMode || changeMode) ? 'none' : '';
     fieldProceso.style.display = ingresoMode ? 'none' : '';
     fieldObservacion.style.display = ingresoMode ? 'none' : '';
-    fieldTipoProceso.style.display = ingresoMode ? 'none' : '';
-    if(fieldReporteElectrico) fieldReporteElectrico.style.display = ingresoMode ? 'none' : '';
-    if(seguimientoBox) seguimientoBox.style.display = ingresoMode ? 'none' : '';
+    fieldTipoProceso.style.display = (ingresoMode || changeMode) ? 'none' : '';
+    if(serviceIdFieldBox) serviceIdFieldBox.style.display = changeMode ? 'none' : '';
+    if(unicoBox && tipoProceso !== 'MASIVO') unicoBox.style.display = changeMode ? 'none' : '';
+    if(fieldReporteElectrico) fieldReporteElectrico.style.display = (ingresoMode || changeMode) ? 'none' : '';
+    if(seguimientoBox) seguimientoBox.style.display = (ingresoMode || changeMode) ? 'none' : '';
     tpChangeLabel.textContent = ingresoMode ? 'TP asociado (si aplica)' : 'TP Change';
+    setProcesoOptions(changeMode);
     const teamsHintEl = document.getElementById('teamsHint');
     if(teamsHintEl){
       teamsHintEl.textContent = ingresoMode
         ? 'Este resumen se arma solo con Fecha, Service ID, Nombre, Contacto, Actividad y TP asociado. Si lo editas a mano aquí, tus cambios no se sobrescriben.'
-        : 'Este resumen se arma solo con OTS Sev 3/4, Service ID, Nombre, Proceso y Observación. Si lo editas a mano aquí, tus cambios no se sobrescriben.';
+        : changeMode
+          ? 'Este resumen se arma solo con Service ID, TP Change, Contacto, Celular, fecha/hora de inicio y cierre, Proceso y Observación. Si lo editas a mano aquí, tus cambios no se sobrescriben.'
+          : 'Este resumen se arma solo con OTS Sev 3/4, Service ID, Nombre, Proceso y Observación. Si lo editas a mano aquí, tus cambios no se sobrescriben.';
     }
-    if(ingresoMode && tipoProceso === 'MASIVO'){
+    if((ingresoMode || changeMode) && tipoProceso === 'MASIVO'){
       tipoProceso = 'UNICO';
       refreshTipoProcesoUI();
     }
     if(ingresoMode && justSwitchedIn){
       fechaInput.value = fechaLocalHoy();
     }
+    if(changeMode && justSwitchedIntoChange){
+      if(!changeInicioInput.value) changeInicioInput.value = nowLocalDatetimeValue();
+      if(!changeIdsInput.value && document.getElementById('f_serviceId').value){
+        changeIdsInput.value = document.getElementById('f_serviceId').value;
+      }
+      renderChangeIdsPreview();
+    }
+    refreshSaveButtonLabel();
     regenerateTeams(false);
   }
   estadoSelect.addEventListener('change', ()=>{
     const nowIngreso = (estadoSelect.value === 'INGRESO' || estadoSelect.value === 'SALIDA');
-    updateIngresoModeUI(nowIngreso && !prevEstadoWasIngreso);
+    const nowChange = estadoSelect.value === 'TP (CHANGE)';
+    updateIngresoModeUI(nowIngreso && !prevEstadoWasIngreso, nowChange && !prevEstadoWasChange);
     prevEstadoWasIngreso = nowIngreso;
+    prevEstadoWasChange = nowChange;
   });
 
   // ---- Generación automática del resumen "Teams" a partir de los demás campos ----
   function computeTeamsText(){
+
     if(estadoSelect.value === 'INGRESO' || estadoSelect.value === 'SALIDA'){
       const draft = {
         fechaAlarma: fechaInput.value,
@@ -4548,6 +4739,23 @@ function openModal(id, readOnly){
         tpChange: document.getElementById('f_tpChange').value.trim()
       };
       return generateIngresoTeamsText(draft);
+    }
+    if(estadoSelect.value === 'TP (CHANGE)'){
+      const tpChange = document.getElementById('f_tpChange').value.trim();
+      const contacto = document.getElementById('f_contacto').value.trim();
+      const celular = document.getElementById('f_celular').value.trim();
+      const changeInicio = changeInicioInput.value;
+      const changeCierre = document.getElementById('f_change_cierre').value;
+      const proceso = document.getElementById('f_proceso').value.trim();
+      const observacion = document.getElementById('f_observacion').value.trim();
+      const ids = parseServiceIdList(changeIdsInput.value);
+      if(ids.length === 0) return '';
+      const lines = ids.map(id=>{
+        const site = lookupSiteById(id);
+        const nombreSitio = site && site.siteName ? site.siteName : '';
+        return generateChangeTeamsText({ serviceId:id, nombreSitio, tpChange, contacto, celular, changeInicio, changeCierre, proceso, observacion });
+      });
+      return lines.join('\n');
     }
     const otsSev1 = document.getElementById('f_otsSev1').value.trim();
     const otsSev2 = document.getElementById('f_otsSev2').value.trim();
@@ -4594,7 +4802,7 @@ function openModal(id, readOnly){
 
   // Cualquier campo que alimenta el resumen dispara la regeneración automática
   // (mientras el agente no haya escrito algo distinto a mano en el campo Teams).
-  const TEAMS_SOURCE_FIELD_IDS = ['f_otsSev1','f_otsSev2','f_serviceId','f_nombre','f_proceso','f_observacion','f_fecha','f_tpChange','f_contacto','f_actividad'];
+  const TEAMS_SOURCE_FIELD_IDS = ['f_otsSev1','f_otsSev2','f_serviceId','f_nombre','f_proceso','f_observacion','f_fecha','f_tpChange','f_contacto','f_actividad','f_change_ids','f_change_inicio','f_change_cierre','f_celular'];
   TEAMS_SOURCE_FIELD_IDS.forEach(id=>{
     const el = document.getElementById(id);
     el.addEventListener('input', ()=> regenerateTeams(false));
@@ -4639,6 +4847,71 @@ function openModal(id, readOnly){
   }
 
   document.getElementById('modalSave').onclick = ()=>{
+    // ----- MODO CHANGE: uno o varios Service ID bajo un mismo TP Change, cada uno crea su
+    // propio registro TP (CHANGE) independiente (solo al crear) -----
+    if(!editingId && document.getElementById('f_estado').value === 'TP (CHANGE)'){
+      const changeIds = parseServiceIdList(changeIdsInput.value);
+      if(changeIds.length === 0){
+        showToast('Agrega al menos un Service ID', 'info');
+        changeIdsInput.focus();
+        return;
+      }
+      const sharedTpChange = document.getElementById('f_tpChange').value.trim();
+      if(sharedTpChange === ''){
+        showToast('Debes diligenciar el TP Change', 'info');
+        document.getElementById('f_tpChange').focus();
+        return;
+      }
+      if(!/^\d+$/.test(sharedTpChange)){
+        showToast('TP Change debe contener solo números', 'info');
+        document.getElementById('f_tpChange').focus();
+        return;
+      }
+      const sharedContacto = document.getElementById('f_contacto').value.trim();
+      const sharedCelular = document.getElementById('f_celular').value.trim();
+      const sharedInicio = changeInicioInput.value;
+      const sharedCierre = document.getElementById('f_change_cierre').value;
+      const sharedProcesoChange = document.getElementById('f_proceso').value.trim();
+      const sharedObservacionChange = document.getElementById('f_observacion').value.trim();
+
+      const newChangeRecs = changeIds.map(sid=>{
+        const site = lookupSiteById(sid);
+        const nombreSitio = site ? (site.siteName||'') : '';
+        const vipVal = site ? (normalizeVip(site.vip) || 'NO') : 'NO';
+        const seguridadVal = site ? (normalizeVip(site.seguridad) || '') : '';
+        const teamsVal = generateChangeTeamsText({
+          serviceId: sid, nombreSitio, tpChange: sharedTpChange, contacto: sharedContacto,
+          changeInicio: sharedInicio, changeCierre: sharedCierre, proceso: sharedProcesoChange, observacion: sharedObservacionChange
+        });
+        return {
+          id: uid(), gestor, estado: 'TP (CHANGE)',
+          otsSev1:'', otsSev2:'', fechaAlarma: fechaLocalHoy(),
+          tpChange: sharedTpChange, serviceId: sid, nombreSitio, categoria:'', tipoProceso:'UNICO',
+          proceso: sharedProcesoChange, observacion: sharedObservacionChange,
+          contacto: sharedContacto, celular: sharedCelular, actividad:'',
+          changeInicio: sharedInicio, changeCierre: sharedCierre,
+          vip: vipVal, seguridad: seguridadVal, teams: teamsVal,
+          reporteElectrico:false, reporteElectricoEnviado:false, reporteElectricoTexto:'', reporteElectricoProveedor:'', reporteElectricoEstado:'',
+          reporteElectricoCreatedAt:null, reporteElectricoSeguimientoAt:null,
+          seguimientoSolicitado:false, seguimientoSolicitadoAt:null, seguimientoSolicitadoAtendido:false, seguimientoSolicitadoCount:0,
+          seguimientoTexto:'',
+          salidaAt:null, cerradoAt:null,
+          createdAt: Date.now()
+        };
+      });
+
+      closeModal();
+      applyRecordsLocally(list => {
+        newChangeRecs.forEach(nr => { if(!list.some(x=>x.id===nr.id)) list.push(nr); });
+      });
+      switchTab('TPCHANGE');
+      showToast(`${newChangeRecs.length} registro${newChangeRecs.length===1?'':'s'} de TP Change creado${newChangeRecs.length===1?'':'s'}`);
+      commitRecordsChange(list => {
+        newChangeRecs.forEach(nr => { if(!list.some(x=>x.id===nr.id)) list.push(nr); });
+      }, { alreadyApplied: true });
+      return;
+    }
+
     // ----- MODO MASIVO: una o varias categorías, cada una con sus propios Service ID (solo al crear) -----
     if(tipoProceso === 'MASIVO' && !editingId){
       const groups = MASIVO_CATS
@@ -4735,6 +5008,11 @@ function openModal(id, readOnly){
       const activeCat = MASIVO_CATS.find(c => masivoActive[c.key]);
       finalServiceId = activeCat ? activeCat.input.value.trim().toUpperCase() : r.serviceId;
       finalCategoria = activeCat ? activeCat.label : (r.categoria || '');
+    } else if(document.getElementById('f_estado').value === 'TP (CHANGE)'){
+      // Al editar un registro TP (CHANGE) ya existente solo se conserva un Service ID
+      // (agregar varios solo aplica al crear); se toma el primero que haya escrito.
+      finalServiceId = (parseServiceIdList(changeIdsInput.value)[0] || '').toUpperCase();
+      finalCategoria = '';
     } else {
       finalServiceId = document.getElementById('f_serviceId').value.trim().toUpperCase();
       finalCategoria = '';
@@ -4795,7 +5073,10 @@ function openModal(id, readOnly){
       proceso: document.getElementById('f_proceso').value.trim(),
       observacion: document.getElementById('f_observacion').value.trim(),
       contacto: document.getElementById('f_contacto').value.trim(),
+      celular: document.getElementById('f_celular').value.trim(),
       actividad: document.getElementById('f_actividad').value.trim(),
+      changeInicio: document.getElementById('f_change_inicio').value,
+      changeCierre: document.getElementById('f_change_cierre').value,
       salidaAt: r.salidaAt || null,
       // Fecha/hora de cierre: se fija la primera vez que el registro pasa a CERRADO y se
       // conserva si se vuelve a guardar estando ya cerrado; se limpia si se reabre.
