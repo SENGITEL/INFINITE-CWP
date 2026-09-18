@@ -319,6 +319,7 @@
   .chip[data-estrep="ABIERTO"].active{ background:var(--blue); }
   .chip[data-estrep="DESCARGO"].active{ background:var(--warn); }
   .chip[data-estrep="CERRADO"].active{ background:#c9d3e3; }
+  .chip[data-estrep="SIN_ASIGNAR"].active{ background:var(--text-faint); }
   .chip.chip-ingreso-toggle.active{ background:var(--seguimiento); }
   .search{
     flex:1; min-width:180px; background:var(--panel-2); border:1px solid var(--line);
@@ -2095,15 +2096,15 @@ function buildElectricoFilterChips(){
     if(electricoViewMode === 'naturgy') return effectiveProveedorKey(r) === 'NATURGY';
     return r.estado !== 'CERRADO';
   });
-  // Filtra por la columna "Estado de Reporte" (Abierto / Descargo / Cerrado), no por el
-  // estado OTS del registro.
-  const ORDEN_ESTADO_REPORTE = ['ABIERTO', 'DESCARGO', 'CERRADO'];
+  // Filtra por la columna "Estado de Reporte" (Abierto / Descargo / Cerrado / Sin asignar),
+  // no por el estado OTS del registro. '' representa los registros sin ese campo diligenciado.
+  const ORDEN_ESTADO_REPORTE = ['ABIERTO', 'DESCARGO', 'CERRADO', ''];
   const presentes = ORDEN_ESTADO_REPORTE.filter(val => poolForMode.some(r => (r.reporteElectricoEstado||'') === val));
   presentes.forEach(val=>{
     const chip = document.createElement('div');
     chip.className = 'chip' + (electricoActiveFilters.has(val) ? ' active' : '');
-    chip.dataset.estrep = val;
-    chip.textContent = ESTADO_REPORTE_LABELS[val] || val;
+    chip.dataset.estrep = val || 'SIN_ASIGNAR';
+    chip.textContent = val === '' ? 'Sin asignar' : (ESTADO_REPORTE_LABELS[val] || val);
     chip.onclick = ()=>{
       if(electricoActiveFilters.has(val)) electricoActiveFilters.delete(val); else electricoActiveFilters.add(val);
       render();
