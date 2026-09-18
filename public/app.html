@@ -437,6 +437,26 @@
     font-size:10.5px; font-weight:700; display:inline-block; font-family:var(--font-mono);
     white-space:nowrap; border:1px solid rgba(255,201,61,0.3);
   }
+  /* Cuando ya se respondió el reporte eléctrico (desde la hoja "Reportes Eléctricos"),
+     la columna "Elec." pasa de "⚡ Solicitado" a "✓ Atendido" en verde. */
+  .pill-electrico-atendido{
+    background:var(--seguimiento-bg); color:var(--seguimiento);
+    border-color:rgba(93,255,176,0.35);
+  }
+  /* Campanita de seguimiento: fija mientras esté pendiente, con el número de veces
+     solicitado; se puede volver a hacer clic para solicitar otro seguimiento. */
+  .pill-aviso-bell-btn{
+    display:inline-flex; align-items:center; gap:2px; margin-left:4px;
+    font-size:10.5px; font-weight:700; vertical-align:middle; font-family:var(--font-mono);
+    background:var(--danger-bg); color:var(--danger); border:1px solid rgba(255,77,109,0.35);
+    border-radius:999px; padding:1px 6px; cursor:pointer;
+  }
+  button.pill-aviso-bell-btn:hover{ filter:brightness(1.15); }
+  /* Misma campana, pero en verde con palomita: el seguimiento ya fue atendido, aunque
+     se sigue pudiendo solicitar otro haciendo clic de nuevo. */
+  .pill-aviso-bell-btn.pill-aviso-bell-atendido{
+    background:var(--seguimiento-bg); color:var(--seguimiento); border-color:rgba(93,255,176,0.35);
+  }
   /* Ticket compartido: cuando varios sitios usan el mismo OTS, se resalta con un color
      propio (asignado por hash del número) para diferenciarlo del resto de filas sueltas. */
   .ticket-shared{
@@ -516,6 +536,34 @@
   #casesView table td:nth-child(20){ display:none; }
   body.show-cerrado-col #casesView table th:nth-child(20),
   body.show-cerrado-col #casesView table td:nth-child(20){ display:table-cell; }
+  /* En Ericsson/Huawei las 3 columnas de reporte eléctrico por separado (Reporte,
+     Proveedor, Seguimiento) no son necesarias: se ocultan y en su lugar se muestra
+     una sola columna con las tres concatenadas en un texto listo para copiar. */
+  body.show-reporte-resumen #casesView table th:nth-child(14),
+  body.show-reporte-resumen #casesView table td:nth-child(14),
+  body.show-reporte-resumen #casesView table th:nth-child(15),
+  body.show-reporte-resumen #casesView table td:nth-child(15),
+  body.show-reporte-resumen #casesView table th:nth-child(16),
+  body.show-reporte-resumen #casesView table td:nth-child(16){ display:none; }
+  #casesView table th:nth-child(21),
+  #casesView table td:nth-child(21){ display:none; }
+  body.show-reporte-resumen #casesView table th:nth-child(21),
+  body.show-reporte-resumen #casesView table td:nth-child(21){ display:table-cell; }
+  /* En la pestaña TP Change, las columnas Proceso, Baterías y Generador no aportan
+     (todas las filas son del mismo tipo de caso), así que se ocultan ahí. */
+  body.hide-tpchange-extra-cols #casesView table th:nth-child(8),
+  body.hide-tpchange-extra-cols #casesView table td:nth-child(8),
+  body.hide-tpchange-extra-cols #casesView table th:nth-child(11),
+  body.hide-tpchange-extra-cols #casesView table td:nth-child(11),
+  body.hide-tpchange-extra-cols #casesView table th:nth-child(12),
+  body.hide-tpchange-extra-cols #casesView table td:nth-child(12){ display:none; }
+  /* En la hoja "Reportes Eléctricos" tampoco son necesarias: se ocultan siempre. */
+  #electricoTable th:nth-child(9),
+  #electricoTable td:nth-child(9),
+  #electricoTable th:nth-child(17),
+  #electricoTable td:nth-child(17),
+  #electricoTable th:nth-child(18),
+  #electricoTable td:nth-child(18){ display:none; }
   .electrico-check{ display:flex; align-items:center; gap:9px; cursor:pointer; user-select:none; }
   .aviso-count-badge{
     display:inline-flex; align-items:center; justify-content:center; min-width:20px; height:20px;
@@ -1063,6 +1111,7 @@
               <th>Actividad</th>
               <th>Salida</th>
               <th>Fecha y hora de cierre</th>
+              <th>Reporte Eléctrico (resumen)</th>
             </tr>
           </thead>
           <tbody id="tbody"></tbody>
@@ -1219,6 +1268,23 @@ function proveedorLabelForRecord(r){
   if(key === 'ENSA' || key === 'NATURGY') return PROVEEDOR_LABELS[key];
   return key; // texto libre proveniente del NIS (no encaja en Ensa/Naturgy)
 }
+// Concatena en un solo texto copiable lo que antes vivía en 3 columnas separadas
+// (Reporte Eléctrico, Proveedor, Seguimiento Reporte Eléctrico), para las pestañas
+// Ericsson/Huawei donde esas 3 columnas por separado no son necesarias.
+function reporteResumenTexto(r){
+  if(!r.reporteElectricoEnviado) return '';
+  const partes = [];
+  if((r.reporteElectricoTexto||'').trim()) partes.push(`Reporte: ${r.reporteElectricoTexto.trim()}`);
+  const prov = proveedorLabelForRecord(r);
+  if(prov) partes.push(`Proveedor: ${prov}`);
+  if((r.seguimientoTexto||'').trim()) partes.push(`Seguimiento: ${r.seguimientoTexto.trim()}`);
+  return partes.join(' | ');
+}
+function reporteResumenCellHtml(r){
+  const texto = reporteResumenTexto(r);
+  if(!texto) return '<span class="empty-dash">—</span>';
+  return `<div class="copy-cell"><span class="text-flag" title="${escapeHtml(texto)}">Texto</span><button type="button" class="copy-btn" data-copy="${escapeHtml(texto)}" title="Copiar">📋</button></div>`;
+}
 const PROCESO_OPTIONS = [
   "En Baterías",
   "En Generador",
@@ -1293,6 +1359,21 @@ function procesoLedHtml(proceso, categoria){
 function ingresoBadgeHtml(serviceId){
   if(!serviceId || !sitiosConIngreso.has(serviceId)) return '';
   return `<span class="ingreso-badge" title="Hay un ingreso activo registrado para este sitio (personal en sitio, sin salida registrada)">${ROW_ICONS.person} Ingreso</span>`;
+}
+// Icono de seguimiento del reporte eléctrico, junto al pill "Elec." de un registro.
+// Es siempre el mismo botón (campanita), para poder seguir solicitando seguimientos
+// las veces que haga falta; lo único que cambia es lo que se muestra junto a la
+// campana: el número de veces solicitado mientras esté pendiente, o una palomita en
+// cuanto se marque como atendido desde "Reportes Eléctricos" (sin dejar de poder
+// volver a solicitar otro seguimiento haciendo clic de nuevo).
+function avisoSeguimientoHtml(r){
+  if(!r.seguimientoSolicitado) return '';
+  const veces = r.seguimientoSolicitadoCount || 1;
+  const atendido = !!r.seguimientoSolicitadoAtendido;
+  const indicador = atendido ? '✓' : veces;
+  const cls = atendido ? 'pill-aviso-bell-btn pill-aviso-bell-atendido' : 'pill-aviso-bell-btn';
+  const titulo = `Seguimiento ${atendido ? 'atendido' : 'pendiente'} (solicitado ${veces} ${veces===1?'vez':'veces'}) — clic para solicitar otro seguimiento`;
+  return `<button type="button" class="${cls}" data-bell="${r.id}" title="${titulo}">🔔 ${indicador}</button>`;
 }
 // Igual que ingresoBadgeHtml, pero para TP (CHANGE): si este Service ID tiene un
 // registro en esa pestaña, esta fila (en Ericsson/Huawei/Cerrados) no lo muestra
@@ -1912,6 +1993,8 @@ function switchTab(tab){
   document.body.classList.toggle('hide-gestor-col', tab === 'ERICSSON' || tab === 'HUAWEI');
   document.body.classList.toggle('hide-ingresos-extra-cols', tab === 'INGRESOS');
   document.body.classList.toggle('show-cerrado-col', tab === 'CERRADOS');
+  document.body.classList.toggle('show-reporte-resumen', tab === 'ERICSSON' || tab === 'HUAWEI');
+  document.body.classList.toggle('hide-tpchange-extra-cols', tab === 'TPCHANGE');
   render();
 }
 
@@ -2647,7 +2730,9 @@ function buildRowHtml(r, extraClass){
         <td>${r.vip === 'SI' ? '<span class="vip-si">SÍ</span>' : '<span class="vip-no">NO</span>'}</td>
         <td>${siteInfo ? dash(siteInfo.baterias) : '<span class="empty-dash">—</span>'}</td>
         <td>${siteInfo ? dash(siteInfo.generador) : '<span class="empty-dash">—</span>'}</td>
-        <td>${r.reporteElectrico ? '<span class="pill-electrico">⚡ Solicitado</span>' : '<span class="empty-dash">—</span>'}</td>
+        <td>${r.reporteElectrico
+          ? `${r.reporteElectricoEnviado ? '<span class="pill-electrico pill-electrico-atendido">✓ Atendido</span>' : '<span class="pill-electrico">⚡ Solicitado</span>'}${avisoSeguimientoHtml(r)}`
+          : '<span class="empty-dash">—</span>'}</td>
         <td class="mono">
           ${r.reporteElectricoEnviado && r.reporteElectricoTexto
             ? `<div class="copy-cell"><span>${escapeHtml(r.reporteElectricoTexto)}</span><button type="button" class="copy-btn" data-copy="${escapeHtml(r.reporteElectricoTexto)}" title="Copiar">📋</button></div>`
@@ -2667,6 +2752,7 @@ function buildRowHtml(r, extraClass){
         <td class="obs-text">${dash(r.actividad)}</td>
         <td class="mono">${r.salidaAt ? formatDateTime(r.salidaAt) : '<span class="empty-dash">—</span>'}</td>
         <td class="mono">${r.cerradoAt ? formatDateTime(r.cerradoAt) : '<span class="empty-dash">—</span>'}</td>
+        <td class="mono">${reporteResumenCellHtml(r)}</td>
       </tr>
     `;
   }
@@ -2720,7 +2806,22 @@ function buildRowHtml(r, extraClass){
         <td>${vipCount>0 ? `<span class="vip-si">SÍ (${vipCount})</span>` : '<span class="vip-no">NO</span>'}</td>
         <td><span class="empty-dash">—</span></td>
         <td><span class="empty-dash">—</span></td>
-        <td>${elecCount>0 ? `<span class="pill-electrico">⚡ Solicitado (${elecCount})</span>` : '<span class="empty-dash">—</span>'}</td>
+        <td>${(()=>{
+          if(elecCount === 0) return '<span class="empty-dash">—</span>';
+          const atendidos = groupRecords.filter(x=>x.reporteElectrico && x.reporteElectricoEnviado).length;
+          const pendientes = elecCount - atendidos;
+          const avisosPendientes = groupRecords.filter(x=>x.seguimientoSolicitado && !x.seguimientoSolicitadoAtendido);
+          const avisosAtendidos = groupRecords.filter(x=>x.seguimientoSolicitado && x.seguimientoSolicitadoAtendido).length;
+          const partes = [];
+          if(pendientes>0) partes.push(`<span class="pill-electrico">⚡ Solicitado (${pendientes})</span>`);
+          if(atendidos>0) partes.push(`<span class="pill-electrico pill-electrico-atendido">✓ Atendido (${atendidos})</span>`);
+          if(avisosPendientes.length>0){
+            const totalVeces = avisosPendientes.reduce((a,x)=>a+(x.seguimientoSolicitadoCount||1),0);
+            partes.push(`<span class="pill-aviso-bell-btn" title="Hay ${avisosPendientes.length} seguimiento(s) pendiente(s) en este lote — ábrelo(s) individualmente para solicitar otro">🔔 ${totalVeces}</span>`);
+          }
+          if(avisosAtendidos>0) partes.push(`<span class="pill-aviso-bell-btn pill-aviso-bell-atendido" title="${avisosAtendidos} seguimiento(s) atendido(s) en este lote">🔔 ✓ ${avisosAtendidos}</span>`);
+          return partes.join(' ');
+        })()}</td>
         <td class="mono"><span class="empty-dash">—</span></td>
         <td class="mono"><span class="empty-dash">—</span></td>
         <td class="obs-text"><span class="empty-dash">—</span></td>
@@ -2730,6 +2831,7 @@ function buildRowHtml(r, extraClass){
         <td><span class="empty-dash">—</span></td>
         <td><span class="empty-dash">—</span></td>
         <td class="mono">${(()=>{ const closedAts = groupRecords.map(x=>x.cerradoAt).filter(Boolean); return closedAts.length ? formatDateTime(Math.max(...closedAts)) : '<span class="empty-dash">—</span>'; })()}</td>
+        <td class="mono">${(()=>{ const resumenes = groupRecords.map(x=>reporteResumenTexto(x)).filter(Boolean); if(resumenes.length===0) return '<span class="empty-dash">—</span>'; const texto = resumenes.join('\n\n'); return `<div class="copy-cell"><span class="text-flag" title="${escapeHtml(texto)}">Texto</span><button type="button" class="copy-btn" data-copy="${escapeHtml(texto)}" title="Copiar">📋</button></div>`; })()}</td>
       </tr>
     `;
   }
@@ -2848,6 +2950,21 @@ function buildRowHtml(r, extraClass){
       render();
       await saveRecords();
       showToast('Registro marcado como pendiente de cierre');
+    });
+  });
+  queryAllIn(touchedRows, '[data-bell]').forEach(btn=>{
+    btn.addEventListener('click', async (e)=>{
+      e.stopPropagation();
+      const id = btn.dataset.bell;
+      const rec = records.find(r=>r.id===id);
+      if(!rec) return;
+      rec.seguimientoSolicitado = true;
+      rec.seguimientoSolicitadoAtendido = false;
+      rec.seguimientoSolicitadoAt = Date.now();
+      rec.seguimientoSolicitadoCount = (rec.seguimientoSolicitadoCount || 0) + 1;
+      render();
+      await saveRecords();
+      showToast(`Nuevo seguimiento solicitado (${rec.seguimientoSolicitadoCount})`);
     });
   });
   queryAllIn(touchedRows, '[data-escalate]').forEach(btn=>{
