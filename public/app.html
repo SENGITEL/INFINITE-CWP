@@ -428,7 +428,7 @@
   }
   .tp-badge{
     display:inline-flex; align-items:center; gap:3px; margin-left:6px;
-    background:rgba(255,159,69,.15); color:#ff9f45; border:1px solid rgba(255,159,69,.4);
+    background:var(--blue-bg); color:var(--blue); border:1px solid rgba(79,182,255,.4);
     padding:1px 6px; border-radius:999px; font-size:10px; font-weight:700;
     vertical-align:middle; white-space:nowrap;
   }
@@ -1301,6 +1301,20 @@ function tpChangeBadgeHtml(serviceId){
   if(!serviceId || !sitiosConTpChange.has(serviceId)) return '';
   return `<span class="tp-badge" title="Hay un TP (Change) activo registrado para este sitio">${ROW_ICONS.wrench} TP</span>`;
 }
+// Contenido de la columna "TP Change" de un registro: si el registro tiene su propio
+// tpChange diligenciado, se muestra igual que siempre (ticketCellHtml, con su color
+// compartido). Si NO lo tiene pero el mismo Service ID tiene un TP (Change) activo en
+// la pestaña TP Change, se muestra ese número heredado, distinguido con el icono de
+// llave, para que quede visible sin tener que ir a buscarlo a la otra pestaña.
+function tpChangeCellHtml(r, sharedColors, searchTerm){
+  const own = (r.tpChange||'').trim();
+  if(own) return ticketCellHtml(r.tpChange, sharedColors, searchTerm);
+  if(r.estado === 'TP (CHANGE)' || r.estado === 'CERRADO') return '';
+  const inherited = tpChangeValueBySite.get(r.serviceId);
+  if(!inherited || inherited.length === 0) return '';
+  const label = inherited.join(', ');
+  return `<span class="tp-badge" title="TP (Change) asociado a este sitio (registrado en la pestaña TP Change)">${ROW_ICONS.wrench} ${escapeHtml(label)}</span>`;
+}
 // Calcula, dentro de la lista visible, qué valores de un campo (p.ej. otsSev1/otsSev2)
 // están repetidos en más de un registro -> significa que varios sitios comparten el mismo
 // ticket/OTS. Devuelve un Map valorNormalizado -> índice de color (0-7), asignado de forma
@@ -1423,6 +1437,7 @@ let isCommitting = false; // true mientras un guardado optimista está reconcili
 // adentro aunque su fila de ingreso viva en la pestaña "Ingresos".
 let sitiosConIngreso = new Set();
 let sitiosConTpChange = new Set();
+let tpChangeValueBySite = new Map();
 let searchTerm = "";
 let sortColumn = null;   // 'estado' | 'fechaAlarma' | 'serviceId' | null (null = orden por defecto)
 let sortDirection = 'asc'; // 'asc' | 'desc'
@@ -2250,6 +2265,17 @@ function renderInner(){
   updateKpis();
   sitiosConIngreso = new Set(records.filter(r => r.estado === 'INGRESO' && r.serviceId).map(r => r.serviceId));
   sitiosConTpChange = new Set(records.filter(r => r.estado === 'TP (CHANGE)' && r.serviceId).map(r => r.serviceId));
+  // Mapa Service ID -> número de TP Change, tomado de los registros que viven en la
+  // pestaña TP Change. Permite que un registro "EN GESTION" (u otro estado) del MISMO
+  // sitio muestre ese TP en su propia columna "TP Change", aunque el campo tpChange de
+  // ESE registro esté vacío (el TP se diligenció en el registro TP (CHANGE) asociado).
+  tpChangeValueBySite = new Map();
+  records.filter(r => r.estado === 'TP (CHANGE)' && r.serviceId && (r.tpChange||'').trim())
+    .forEach(r => {
+      if(!tpChangeValueBySite.has(r.serviceId)) tpChangeValueBySite.set(r.serviceId, []);
+      const arr = tpChangeValueBySite.get(r.serviceId);
+      if(!arr.includes(r.tpChange.trim())) arr.push(r.tpChange.trim());
+    });
   const ericssonCount = records.filter(r => (r.gestor||'ERICSSON') === 'ERICSSON' && r.estado !== 'CERRADO' && r.estado !== 'INGRESO' && r.estado !== 'SALIDA' && r.estado !== 'TP (CHANGE)').length;
   const huaweiCount = records.filter(r => r.gestor === 'HUAWEI' && r.estado !== 'CERRADO' && r.estado !== 'INGRESO' && r.estado !== 'SALIDA' && r.estado !== 'TP (CHANGE)').length;
   const ingresosCount = records.filter(r => r.estado === 'INGRESO').length;
@@ -2539,6 +2565,33 @@ function tieneOtsBloqueandoCierre(r){
   return false;
 }
 
+// Al cerrar un registro TP (CHANGE), busca otros registros del MISMO Service ID que
+// sigan abiertos (no CERRADO) y tengan un OTS Sev 3 y/o Sev 4 diligenciado: son los
+// casos que originaron ese TP y que quedan pendientes de cerrar por separado. Devuelve
+// la lista de números de OTS involucrados (sin duplicados), para avisar al usuario.
+function otsAsociadosPendientes(cerrado){
+  if(!cerrado.serviceId) return [];
+  const otsSet = new Set();
+  records.forEach(r=>{
+    if(r.id === cerrado.id) return;
+    if(r.serviceId !== cerrado.serviceId) return;
+    if(r.estado === 'CERRADO') return;
+    const ots1 = (r.otsSev1||'').trim();
+    const ots2 = (r.otsSev2||'').trim();
+    if(ots1) otsSet.add(ots1);
+    if(ots2) otsSet.add(ots2);
+  });
+  return [...otsSet];
+}
+// Muestra, tras cerrar un TP (CHANGE), el aviso de que quedan OTS asociados por cerrar.
+// Se usa alert() en vez de showToast para que el mensaje no se pierda antes de leerlo.
+function avisarOtsAsociadosSiAplica(cerrado){
+  if(cerrado.estado !== 'TP (CHANGE)') return;
+  const pendientes = otsAsociadosPendientes(cerrado);
+  if(pendientes.length === 0) return;
+  alert(`Se cerró el TP (Change)${(cerrado.tpChange||'').trim() ? ' ' + cerrado.tpChange.trim() : ''}. Recuerda cerrar el/los OTS asociado(s) a este sitio (${cerrado.serviceId}): ${pendientes.join(', ')}.`);
+}
+
 function buildRowHtml(r, extraClass){
     const cls = ESTADO_CLASS[r.estado] || 'CERRADO';
     const procesoHtml = isProcesoCritico(r.proceso)
@@ -2581,9 +2634,9 @@ function buildRowHtml(r, extraClass){
           </div>
         </td>
         <td class="mono">${dash(r.fechaAlarma)}</td>
-        <td class="mono">${ticketCellHtml(r.tpChange, sharedTpChangeColors, searchTerm)}</td>
+        <td class="mono">${tpChangeCellHtml(r, sharedTpChangeColors, searchTerm)}</td>
         <td class="mono">${procesoLedHtml(r.proceso, r.categoria) || ''}<span class="id-cell" style="font-weight:600;" data-id-menu="${r.id}" title="Clic para cambiar el estado eléctrico del sitio">${dashHl(r.serviceId, searchTerm)}</span></td>
-        <td class="obs-text">${dash(r.nombreSitio)}${(r.estado!=='INGRESO' && r.estado!=='SALIDA') ? ingresoBadgeHtml(r.serviceId) : ''}${(r.estado!=='TP (CHANGE)') ? tpChangeBadgeHtml(r.serviceId) : ''}</td>
+        <td class="obs-text">${dash(r.nombreSitio)}${(r.estado!=='INGRESO' && r.estado!=='SALIDA') ? ingresoBadgeHtml(r.serviceId) : ''}</td>
         <td>${procesoHtml}</td>
         <td class="obs-text">
           <div class="obs-cell">
@@ -2657,7 +2710,7 @@ function buildRowHtml(r, extraClass){
           <div><button type="button" class="masivo-toggle-btn masivo-toggle-icon" data-toggle-group="${groupKey}" title="Ver/editar registros individuales">▾</button></div>
         </td>
         <td class="mono">${dash(first.fechaAlarma)}</td>
-        <td class="mono">${ticketCellHtml(first.tpChange, sharedTpChangeColors, searchTerm)}</td>
+        <td class="mono">${tpChangeCellHtml(first, sharedTpChangeColors, searchTerm)}</td>
         <td class="mono">
           <div class="sid-chip-wrap">${chips}</div>
         </td>
@@ -2776,11 +2829,13 @@ function buildRowHtml(r, extraClass){
         return;
       }
       if(!confirm('¿Cerrar este registro?')) return;
+      const estadoPrevio = rec.estado;
       rec.estado = 'CERRADO';
       rec.cerradoAt = rec.cerradoAt || Date.now();
       render();
       await saveRecords();
       showToast('Registro cerrado');
+      avisarOtsAsociadosSiAplica({ ...rec, estado: estadoPrevio });
     });
   });
   queryAllIn(touchedRows, '[data-pending]').forEach(btn=>{
@@ -4549,6 +4604,9 @@ function openModal(id, readOnly){
     else if(updated.estado === 'SALIDA') ingresosSubFilter = 'SALIDAS';
     switchTab(openedFromTab === 'ELECTRICO' ? 'ELECTRICO' : (updated.estado === 'CERRADO' ? 'CERRADOS' : ((updated.estado === 'INGRESO' || updated.estado === 'SALIDA') ? 'INGRESOS' : (updated.estado === 'TP (CHANGE)' ? 'TPCHANGE' : (gestor === 'HUAWEI' ? 'HUAWEI' : 'ERICSSON')))));
     showToast(editingId ? 'Cambios guardados' : 'Registro creado');
+    if(updated.estado === 'CERRADO' && r.estado === 'TP (CHANGE)'){
+      avisarOtsAsociadosSiAplica({ ...updated, estado: 'TP (CHANGE)' });
+    }
     // la relectura/reconciliación con el servidor (para no pisar cambios de otro
     // gestor) pasa por debajo, sin bloquear la pantalla
     commitRecordsChange(list => {
