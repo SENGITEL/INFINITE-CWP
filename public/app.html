@@ -316,6 +316,9 @@
   .chip[data-estado="ESCALADO A IP"].active{ background:var(--escip); }
   .chip[data-estado="ESCALADO A DWDM"].active{ background:var(--escdwdm); }
   .chip[data-estado="SEGUIMIENTO"].active{ background:var(--seguimiento); }
+  .chip[data-estrep="ABIERTO"].active{ background:var(--blue); }
+  .chip[data-estrep="DESCARGO"].active{ background:var(--warn); }
+  .chip[data-estrep="CERRADO"].active{ background:#c9d3e3; }
   .chip.chip-ingreso-toggle.active{ background:var(--seguimiento); }
   .search{
     flex:1; min-width:180px; background:var(--panel-2); border:1px solid var(--line);
@@ -1136,6 +1139,7 @@
         <input class="search" id="electricoSearchInput" placeholder="Buscar por Service ID, observación…" />
         <button class="btn-ghost" id="electricoExportBtn" style="margin-left:auto;">⬇ Exportar Excel</button>
       </div>
+      <div class="filters" id="electricoEstadoFilters"></div>
       <div class="table-scroll">
         <table id="electricoTable">
           <thead>
@@ -1618,6 +1622,7 @@ function computeTkClusters(allRecords){
 }
 let electricoSearchTerm = "";
 let electricoViewMode = "activos"; // "activos" | "cerrados" | "ensa" | "naturgy" — separa los reportes por estado (abierto/cerrado) o por proveedor
+let electricoActiveFilters = new Set(); // estados adicionales elegidos con los chips de la hoja "Reportes Eléctricos"
 let expandedUbicacionIds = new Set(); // ids de registros cuya dirección completa está desplegada, decisión manual del agente
 let seguimientoOtroSelectedIds = new Set(); // ids con "Otro, ¿Cuál?" elegido a mano en Seguimiento (Reportes Eléctricos), para que el campo de texto no se oculte aunque aún esté vacío
 let siteSearchTerm = "";
@@ -2074,6 +2079,36 @@ function buildFilterChips(){
       render();
     };
     box.insertBefore(chip, searchEl);
+  });
+}
+
+/* ---------------- FILTER CHIPS (Reportes Eléctricos) ---------------- */
+
+function buildElectricoFilterChips(){
+  const box = document.getElementById('electricoEstadoFilters');
+  if(!box) return;
+  box.innerHTML = '';
+  const allElectrico = records.filter(r => r.reporteElectrico);
+  const poolForMode = allElectrico.filter(r => {
+    if(electricoViewMode === 'cerrados') return r.estado === 'CERRADO';
+    if(electricoViewMode === 'ensa') return effectiveProveedorKey(r) === 'ENSA';
+    if(electricoViewMode === 'naturgy') return effectiveProveedorKey(r) === 'NATURGY';
+    return r.estado !== 'CERRADO';
+  });
+  // Filtra por la columna "Estado de Reporte" (Abierto / Descargo / Cerrado), no por el
+  // estado OTS del registro.
+  const ORDEN_ESTADO_REPORTE = ['ABIERTO', 'DESCARGO', 'CERRADO'];
+  const presentes = ORDEN_ESTADO_REPORTE.filter(val => poolForMode.some(r => (r.reporteElectricoEstado||'') === val));
+  presentes.forEach(val=>{
+    const chip = document.createElement('div');
+    chip.className = 'chip' + (electricoActiveFilters.has(val) ? ' active' : '');
+    chip.dataset.estrep = val;
+    chip.textContent = ESTADO_REPORTE_LABELS[val] || val;
+    chip.onclick = ()=>{
+      if(electricoActiveFilters.has(val)) electricoActiveFilters.delete(val); else electricoActiveFilters.add(val);
+      render();
+    };
+    box.appendChild(chip);
   });
 }
 
@@ -3188,6 +3223,8 @@ function renderElectrico(){
   document.getElementById('electricoModeEnsa').classList.toggle('active', electricoViewMode === 'ensa');
   document.getElementById('electricoModeNaturgy').classList.toggle('active', electricoViewMode === 'naturgy');
 
+  buildElectricoFilterChips();
+
   let list = allElectrico.filter(r => {
     if(electricoViewMode === 'cerrados') return isCerrado(r);
     if(electricoViewMode === 'ensa') return effectiveProveedorKey(r) === 'ENSA';
@@ -3195,6 +3232,10 @@ function renderElectrico(){
     return !isCerrado(r);
   }).slice()
     .sort((a,b)=> (isPendingAviso(b)?1:0)-(isPendingAviso(a)?1:0) || (a.fechaAlarma||'').localeCompare(b.fechaAlarma||'') || (a.createdAt||0)-(b.createdAt||0));
+
+  if(electricoActiveFilters.size > 0){
+    list = list.filter(r => electricoActiveFilters.has(r.reporteElectricoEstado || ''));
+  }
 
   if(electricoSearchTerm.trim() !== ''){
     const q = electricoSearchTerm.toLowerCase();
@@ -3856,6 +3897,7 @@ async function exportElectricoToCSV(){
       if(electricoViewMode === 'naturgy') return effectiveProveedorKey(r) === 'NATURGY';
       return r.estado !== 'CERRADO';
     })
+    .filter(r => electricoActiveFilters.size === 0 || electricoActiveFilters.has(r.reporteElectricoEstado || ''))
     .slice()
     .sort((a,b)=> (b.fechaAlarma||'').localeCompare(a.fechaAlarma||'') || (b.createdAt||0)-(a.createdAt||0));
 
@@ -5417,18 +5459,22 @@ document.getElementById('electricoSearchInput').addEventListener('input', (e)=>{
 });
 document.getElementById('electricoModeActivos').addEventListener('click', ()=>{
   electricoViewMode = 'activos';
+  electricoActiveFilters.clear();
   render();
 });
 document.getElementById('electricoModeCerrados').addEventListener('click', ()=>{
   electricoViewMode = 'cerrados';
+  electricoActiveFilters.clear();
   render();
 });
 document.getElementById('electricoModeEnsa').addEventListener('click', ()=>{
   electricoViewMode = 'ensa';
+  electricoActiveFilters.clear();
   render();
 });
 document.getElementById('electricoModeNaturgy').addEventListener('click', ()=>{
   electricoViewMode = 'naturgy';
+  electricoActiveFilters.clear();
   render();
 });
 
