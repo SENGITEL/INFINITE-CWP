@@ -91,7 +91,9 @@
   }
   body.theme-light .chip.active{ color:#ffffff; }
   body.theme-light #electricoModeActivos.active,
-  body.theme-light #electricoModeCerrados.active{ color:#ffffff; }
+  body.theme-light #electricoModeCerrados.active,
+  body.theme-light #electricoModeEnsa.active,
+  body.theme-light #electricoModeNaturgy.active{ color:#ffffff; }
 
   /* Sin animación en la transición de página completa: reconcileTbody() ya reemplaza en
      el DOM únicamente las filas que de verdad cambiaron, así que no hace falta (ni conviene)
@@ -302,6 +304,10 @@
   #electricoModeActivos.active .count{ background:rgba(0,0,0,0.15); color:#06110f; }
   #electricoModeCerrados.active{ background:#c9d3e3; }
   #electricoModeCerrados.active .count{ background:rgba(0,0,0,0.15); color:#06110f; }
+  #electricoModeEnsa.active{ background:var(--blue); }
+  #electricoModeEnsa.active .count{ background:rgba(0,0,0,0.15); color:#001426; }
+  #electricoModeNaturgy.active{ background:var(--warn); }
+  #electricoModeNaturgy.active .count{ background:rgba(0,0,0,0.15); color:#332600; }
   .chip[data-estado="INGRESO"].active{ background:var(--blue); }
   .chip[data-estado="CERRADO"].active{ background:#c9d3e3; }
   .chip[data-estado="TP (CHANGE)"].active{ background:var(--violet); }
@@ -1125,6 +1131,8 @@
       <div class="filters">
         <button class="chip" id="electricoModeActivos" data-mode="activos">Activos <span class="count" id="countElectricoActivos" style="margin-left:4px;">0</span></button>
         <button class="chip" id="electricoModeCerrados" data-mode="cerrados">Cerrados <span class="count" id="countElectricoCerrados" style="margin-left:4px;">0</span></button>
+        <button class="chip" id="electricoModeEnsa" data-mode="ensa">Ensa <span class="count" id="countElectricoEnsa" style="margin-left:4px;">0</span></button>
+        <button class="chip" id="electricoModeNaturgy" data-mode="naturgy">Naturgy <span class="count" id="countElectricoNaturgy" style="margin-left:4px;">0</span></button>
         <input class="search" id="electricoSearchInput" placeholder="Buscar por Service ID, observación…" />
         <button class="btn-ghost" id="electricoExportBtn" style="margin-left:auto;">⬇ Exportar Excel</button>
       </div>
@@ -1247,6 +1255,25 @@ window.storage = {
 };
 const ESTADOS = ["INGRESO","SALIDA","CERRADO","TP (CHANGE)","EN GESTION","PENDIENTE POR CIERRE","ESCALADO A IP","ESCALADO A DWDM","SEGUIMIENTO"];
 const PROVEEDOR_LABELS = { "ENSA":"Ensa", "NATURGY":"Naturgy" };
+// Opciones fijas para la columna "Seguimiento" de la hoja Reportes Eléctricos.
+// "OTRO" es la única editable: al elegirla se despliega un campo de texto libre.
+const SEGUIMIENTO_ELECTRICO_OPTIONS = [
+  "Pendiente atención",
+  "Brigada asignada",
+  "Brigada trabajando",
+  "Normalizado, cuadrilla encuentra normalizado"
+];
+// Dado el texto guardado en r.seguimientoTexto, deduce qué debe mostrar el select
+// (una de las opciones fijas, u "OTRO" si es texto libre) y el valor del campo editable.
+function deriveSeguimientoElectricoState(texto, id){
+  const val = (texto || '').trim();
+  // Si el agente eligió "Otro" a mano, se respeta esa elección aunque el texto todavía esté vacío,
+  // para que el campo de escritura no desaparezca al re-renderizar.
+  if(id && seguimientoOtroSelectedIds.has(id)) return { select:'OTRO', custom:val };
+  if(val === '') return { select:'', custom:'' };
+  if(SEGUIMIENTO_ELECTRICO_OPTIONS.includes(val)) return { select:val, custom:'' };
+  return { select:'OTRO', custom:val };
+}
 
 // Deduce el proveedor de energía a partir del NIS del sitio asociado al registro:
 // NIS de 7 dígitos -> Naturgy. NIS con otra cantidad de dígitos -> Ensa.
@@ -1267,6 +1294,11 @@ function proveedorLabelForRecord(r){
   if(key === '') return '';
   if(key === 'ENSA' || key === 'NATURGY') return PROVEEDOR_LABELS[key];
   return key; // texto libre proveniente del NIS (no encaja en Ensa/Naturgy)
+}
+// Igual que proveedorLabelForRecord pero devuelve la clave interna ('ENSA'/'NATURGY'/
+// texto libre/'') en vez de la etiqueta, para poder filtrar por proveedor.
+function effectiveProveedorKey(r){
+  return r.reporteElectricoProveedor || deduceProveedorFromNis((lookupSiteById(r.serviceId)||{}).nis);
 }
 // Concatena en un solo texto copiable lo que antes vivía en 3 columnas separadas
 // (Reporte Eléctrico, Proveedor, Seguimiento Reporte Eléctrico), para las pestañas
@@ -1585,8 +1617,9 @@ function computeTkClusters(allRecords){
   return byId;
 }
 let electricoSearchTerm = "";
-let electricoViewMode = "activos"; // "activos" | "cerrados" — separa los reportes cuyo ESTADO ya pasó a CERRADO
+let electricoViewMode = "activos"; // "activos" | "cerrados" | "ensa" | "naturgy" — separa los reportes por estado (abierto/cerrado) o por proveedor
 let expandedUbicacionIds = new Set(); // ids de registros cuya dirección completa está desplegada, decisión manual del agente
+let seguimientoOtroSelectedIds = new Set(); // ids con "Otro, ¿Cuál?" elegido a mano en Seguimiento (Reportes Eléctricos), para que el campo de texto no se oculte aunque aún esté vacío
 let siteSearchTerm = "";
 let lastSyncAt = null;
 
@@ -3144,12 +3177,23 @@ function renderElectrico(){
   const allElectrico = records.filter(r => r.reporteElectrico);
   const activosCount = allElectrico.filter(r => !isCerrado(r)).length;
   const cerradosCount = allElectrico.filter(isCerrado).length;
+  const ensaCount = allElectrico.filter(r => effectiveProveedorKey(r) === 'ENSA').length;
+  const naturgyCount = allElectrico.filter(r => effectiveProveedorKey(r) === 'NATURGY').length;
   document.getElementById('countElectricoActivos').textContent = activosCount;
   document.getElementById('countElectricoCerrados').textContent = cerradosCount;
+  document.getElementById('countElectricoEnsa').textContent = ensaCount;
+  document.getElementById('countElectricoNaturgy').textContent = naturgyCount;
   document.getElementById('electricoModeActivos').classList.toggle('active', electricoViewMode === 'activos');
   document.getElementById('electricoModeCerrados').classList.toggle('active', electricoViewMode === 'cerrados');
+  document.getElementById('electricoModeEnsa').classList.toggle('active', electricoViewMode === 'ensa');
+  document.getElementById('electricoModeNaturgy').classList.toggle('active', electricoViewMode === 'naturgy');
 
-  let list = allElectrico.filter(r => electricoViewMode === 'cerrados' ? isCerrado(r) : !isCerrado(r)).slice()
+  let list = allElectrico.filter(r => {
+    if(electricoViewMode === 'cerrados') return isCerrado(r);
+    if(electricoViewMode === 'ensa') return effectiveProveedorKey(r) === 'ENSA';
+    if(electricoViewMode === 'naturgy') return effectiveProveedorKey(r) === 'NATURGY';
+    return !isCerrado(r);
+  }).slice()
     .sort((a,b)=> (isPendingAviso(b)?1:0)-(isPendingAviso(a)?1:0) || (a.fechaAlarma||'').localeCompare(b.fechaAlarma||'') || (a.createdAt||0)-(b.createdAt||0));
 
   if(electricoSearchTerm.trim() !== ''){
@@ -3160,15 +3204,18 @@ function renderElectrico(){
   }
 
   const avisosPendientes = records.filter(isPendingAviso).length;
+  const ELECTRICO_MODE_LABELS = { activos:'Activos', cerrados:'Cerrados', ensa:'Ensa', naturgy:'Naturgy' };
   document.getElementById('subtitle').textContent =
-    `Reportes eléctricos · ${electricoViewMode === 'cerrados' ? 'vista Cerrados' : 'vista Activos'} · ${allElectrico.length} solicitado${allElectrico.length===1?'':'s'} en total` +
+    `Reportes eléctricos · vista ${ELECTRICO_MODE_LABELS[electricoViewMode] || 'Activos'} · ${allElectrico.length} solicitado${allElectrico.length===1?'':'s'} en total` +
     (avisosPendientes ? ` · 🔔 ${avisosPendientes} aviso${avisosPendientes===1?'':'s'} de seguimiento pendiente${avisosPendientes===1?'':'s'}` : '') +
     ` · ${list.length} visible${list.length===1?'':'s'}`;
 
   const tbody = document.getElementById('electricoTbody');
   document.getElementById('electricoEmptyState').style.display = list.length === 0 ? 'block' : 'none';
-  document.getElementById('electricoEmptyState').textContent = electricoViewMode === 'cerrados'
-    ? 'No hay reportes eléctricos cerrados todavía.'
+  document.getElementById('electricoEmptyState').textContent =
+    electricoViewMode === 'cerrados' ? 'No hay reportes eléctricos cerrados todavía.'
+    : electricoViewMode === 'ensa' ? 'No hay reportes eléctricos de Ensa.'
+    : electricoViewMode === 'naturgy' ? 'No hay reportes eléctricos de Naturgy.'
     : 'No hay reportes eléctricos activos. Márcalos desde el formulario de un registro con la casilla "Solicitar reporte eléctrico".';
 
   const sharedOts1ColorsElectrico = computeSharedTicketColors(list, 'otsSev1');
@@ -3182,6 +3229,7 @@ function renderElectrico(){
     const site = lookupSiteById(r.serviceId);
     const deducedProveedor = proveedor === '' ? deduceProveedorFromNis(site ? site.nis : '') : '';
     const pendingAviso = r.seguimientoSolicitado && !r.seguimientoSolicitadoAtendido;
+    const seguimientoState = deriveSeguimientoElectricoState(r.seguimientoTexto, r.id);
     return `
       <tr class="est-${cls} ${pendingAviso ? 'aviso-row' : ''}" data-id="${r.id}">
         <td onclick="event.stopPropagation();">
@@ -3227,7 +3275,12 @@ function renderElectrico(){
           </select>
         </td>
         <td onclick="event.stopPropagation();">
-          <input type="text" class="inline-input" data-seguimientotexto="${r.id}" value="${escapeHtml(r.seguimientoTexto||'')}" placeholder="Seguimiento…" />
+          <select class="inline-select" data-seguimientoselect="${r.id}">
+            <option value="" ${seguimientoState.select==='' ? 'selected' : ''}>—</option>
+            ${SEGUIMIENTO_ELECTRICO_OPTIONS.map(opt => `<option value="${escapeHtml(opt)}" ${seguimientoState.select===opt ? 'selected' : ''}>${escapeHtml(opt)}</option>`).join('')}
+            <option value="OTRO" ${seguimientoState.select==='OTRO' ? 'selected' : ''}>Otro, ¿Cuál?</option>
+          </select>
+          <input type="text" class="inline-input" data-seguimientotexto="${r.id}" value="${escapeHtml(seguimientoState.custom)}" placeholder="Especifique…" style="margin-top:4px; ${seguimientoState.select==='OTRO' ? '' : 'display:none;'}" />
         </td>
         <td class="mono" onclick="event.stopPropagation();">
           ${site && site.medidor ? `<div class="copy-cell"><span>${escapeHtml(site.medidor)}</span><button type="button" class="copy-btn" data-copy="${escapeHtml(site.medidor)}" title="Copiar">📋</button></div>` : '<span class="empty-dash">—</span>'}
@@ -3329,6 +3382,26 @@ function renderElectrico(){
     input.addEventListener('change', async (e)=>{
       const id = input.dataset.seguimientotexto;
       await touchSeguimiento(id, rec => { rec.seguimientoTexto = input.value; });
+      render();
+      showToast('Seguimiento guardado');
+    });
+  });
+  queryAllIn(touchedRows, '[data-seguimientoselect]').forEach(sel=>{
+    trackInlineEditing(sel);
+    sel.addEventListener('change', async (e)=>{
+      const id = sel.dataset.seguimientoselect;
+      const value = sel.value;
+      if(value === 'OTRO'){
+        // Se marca manualmente para que el campo de texto quede visible y editable
+        // (incluso si aún no se ha escrito nada); el guardado ocurre al confirmar el texto.
+        seguimientoOtroSelectedIds.add(id);
+        render();
+        const input = document.querySelector(`[data-seguimientotexto="${id}"]`);
+        if(input) input.focus();
+        return;
+      }
+      seguimientoOtroSelectedIds.delete(id);
+      await touchSeguimiento(id, rec => { rec.seguimientoTexto = value; });
       render();
       showToast('Seguimiento guardado');
     });
@@ -3782,7 +3855,12 @@ const ESTADO_REPORTE_LABELS = { "ABIERTO":"Abierto", "CERRADO":"Cerrado", "DESCA
 async function exportElectricoToCSV(){
   const allElectrico = records.filter(r => r.reporteElectrico);
   const list = allElectrico
-    .filter(r => electricoViewMode === 'cerrados' ? r.estado === 'CERRADO' : r.estado !== 'CERRADO')
+    .filter(r => {
+      if(electricoViewMode === 'cerrados') return r.estado === 'CERRADO';
+      if(electricoViewMode === 'ensa') return effectiveProveedorKey(r) === 'ENSA';
+      if(electricoViewMode === 'naturgy') return effectiveProveedorKey(r) === 'NATURGY';
+      return r.estado !== 'CERRADO';
+    })
     .slice()
     .sort((a,b)=> (b.fechaAlarma||'').localeCompare(a.fechaAlarma||'') || (b.createdAt||0)-(a.createdAt||0));
 
@@ -3825,7 +3903,8 @@ async function exportElectricoToCSV(){
     const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
     ws['!cols'] = headers.map(()=> ({ wch: 18 }));
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, electricoViewMode === 'cerrados' ? 'Cerrados' : 'Activos');
+    const ELECTRICO_SHEET_NAMES = { activos:'Activos', cerrados:'Cerrados', ensa:'Ensa', naturgy:'Naturgy' };
+    XLSX.utils.book_append_sheet(wb, ws, ELECTRICO_SHEET_NAMES[electricoViewMode] || 'Activos');
 
     const stamp = new Date().toISOString().slice(0,16).replace(/[:T]/g,'-');
     XLSX.writeFile(wb, `reportes_electricos_${electricoViewMode}_${stamp}.xlsx`);
@@ -5347,6 +5426,14 @@ document.getElementById('electricoModeActivos').addEventListener('click', ()=>{
 });
 document.getElementById('electricoModeCerrados').addEventListener('click', ()=>{
   electricoViewMode = 'cerrados';
+  render();
+});
+document.getElementById('electricoModeEnsa').addEventListener('click', ()=>{
+  electricoViewMode = 'ensa';
+  render();
+});
+document.getElementById('electricoModeNaturgy').addEventListener('click', ()=>{
+  electricoViewMode = 'naturgy';
   render();
 });
 
