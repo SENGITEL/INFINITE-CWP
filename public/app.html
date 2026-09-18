@@ -2843,7 +2843,7 @@ function buildRowHtml(r, extraClass){
         </td>
         <td class="mono">${dash(r.fechaAlarma)}</td>
         <td class="mono">${tpChangeCellHtml(r, sharedTpChangeColors, searchTerm)}</td>
-        <td class="mono">${procesoLedHtml(r.proceso, r.categoria) || ''}<span class="id-cell" style="font-weight:600;" data-id-menu="${r.id}" title="Clic para cambiar el estado eléctrico del sitio">${dashHl(r.serviceId, searchTerm)}</span></td>
+        <td class="mono">${procesoLedHtml(r.proceso, r.categoria) || ''}<span class="id-cell" style="font-weight:600;" data-id-menu="${r.id}" title="Clic para cambiar el estado eléctrico del sitio">${dashHl(r.serviceId, searchTerm)}</span>${(r.estado !== 'TP (CHANGE)' && r.estado !== 'CERRADO') ? tpChangeBadgeHtml(r.serviceId) : ''}</td>
         <td class="obs-text">${dash(r.nombreSitio)}${(r.estado!=='INGRESO' && r.estado!=='SALIDA') ? ingresoBadgeHtml(r.serviceId) : ''}</td>
         <td>${procesoHtml}</td>
         <td class="obs-text">
