@@ -3341,6 +3341,7 @@ function buildRowHtml(r, extraClass){
       showToast(`${pendientes.length} registro(s) marcado(s) como pendiente de cierre`);
     });
   });
+  ensureColumnWidthsLocked(document.getElementById('casesTable'));
 }
 
 /* ---------------- RENDER ELECTRICO REPORTS ---------------- */
@@ -3646,6 +3647,7 @@ function renderElectrico(){
       }
     });
   });
+  ensureColumnWidthsLocked(document.getElementById('electricoTable'));
 }
 
 /* ---------------- RENDER SITES ---------------- */
@@ -3706,6 +3708,7 @@ function renderSites(){
       });
     });
   });
+  ensureColumnWidthsLocked(document.getElementById('sitesTable'));
 }
 
 /* ---------------- CSV EXPORT (cases) ---------------- */
@@ -6024,6 +6027,31 @@ async function loadColumnWidths(tableKey){
     const widths = JSON.parse(res.value);
     return Array.isArray(widths) ? widths : null;
   }catch(e){ return null; }
+}
+
+/* ---------------- ANCHO INICIAL FIJO SEGÚN EL CONTENIDO ----------------
+   Antes de que el usuario arrastre nada, la tabla usa table-layout:auto y el
+   navegador recalcula el ancho "óptimo" de cada columna en cada repintado, lo que
+   hacía que las columnas se vieran "rodando"/saltando de ancho cada vez que
+   llegaban datos nuevos (sincronización en tiempo real, cambio de pestaña, etc.).
+   Para evitarlo: apenas la tabla tiene filas reales (no skeleton) por primera vez,
+   se mide el ancho que el navegador ya calculó a partir de lo que hay cargado y se
+   deja fijo (table-layout:fixed) — el usuario sigue pudiendo cambiar ese ancho
+   arrastrando el borde del encabezado, igual que antes. Si ya había anchos
+   guardados de una sesión previa (ver loadColumnWidths) o la tabla ya quedó fija
+   una vez, no se vuelve a tocar. */
+function ensureColumnWidthsLocked(table){
+  if(!table || table.classList.contains('col-resizable')) return;
+  if(table.offsetParent === null) return; // pestaña oculta: todavía no se puede medir bien
+  const ths = Array.from(table.querySelectorAll('thead th'));
+  if(!ths.length) return;
+  const tbody = table.querySelector('tbody');
+  if(!tbody || !tbody.querySelector('tr:not(.skeleton-row)')) return; // esperar datos reales
+  const widths = ths.map(th => Math.round(th.getBoundingClientRect().width));
+  if(widths.some(w => !w)) return;
+  table.classList.add('col-resizable');
+  ths.forEach((th,i)=>{ th.style.width = widths[i] + 'px'; });
+  if(table.id) saveColumnWidths(table.id, widths);
 }
 
 async function makeTableResizable(table){
