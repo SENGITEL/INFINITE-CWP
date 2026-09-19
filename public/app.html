@@ -37,6 +37,8 @@
     --escdwdm-bg: #3a0f28;
     --seguimiento: #5dffb0;
     --seguimiento-bg: #0a3324;
+    --normalizado: #9dffd9;
+    --normalizado-bg: #0a3327;
     --ericsson: #f5c400;
     --ericsson-bg: #3a2f05;
     --huawei: #ff4f45;
@@ -77,6 +79,8 @@
     --escdwdm-bg: #fbe3ee;
     --seguimiento: #12875f;
     --seguimiento-bg: #dcf3e9;
+    --normalizado: #2fa876;
+    --normalizado-bg: #e6f7ef;
     --ericsson: #a97e00;
     --ericsson-bg: #fbf0cf;
     --huawei: #c73127;
@@ -720,6 +724,7 @@
   .id-color-baterias{ color:var(--warn); }
   .id-color-indisponible{ color:var(--danger); font-weight:800; }
   .id-color-cerrado{ color:var(--seguimiento); }
+  .id-color-normalizado{ color:var(--normalizado); }
   .id-status-menu{
     position:fixed; z-index:500; background:var(--panel); border:1px solid var(--line);
     border-radius:8px; padding:4px; box-shadow:0 8px 24px rgba(0,0,0,.35);
@@ -904,6 +909,7 @@
   .sid-chip.id-cell.id-color-baterias{ color:var(--warn); }
   .sid-chip.id-cell.id-color-indisponible{ color:var(--danger); font-weight:800; }
   .sid-chip.id-cell.id-color-cerrado{ color:var(--seguimiento); }
+  .sid-chip.id-cell.id-color-normalizado{ color:var(--normalizado); }
   .masivo-mixed{
     font-family:var(--font-mono); font-size:10.5px; font-weight:700; color:var(--text-faint);
     background:var(--panel-3); border:1px solid var(--line); padding:3px 8px; border-radius:6px;
@@ -1358,6 +1364,7 @@ function reporteResumenCellHtml(r){
   return `<div class="copy-cell"><span class="text-flag" title="${escapeHtml(texto)}">Texto</span><button type="button" class="copy-btn" data-copy="${escapeHtml(texto)}" title="Copiar">📋</button></div>`;
 }
 const PROCESO_OPTIONS = [
+  "Normalizado",
   "En Baterías",
   "En Generador",
   "En Baterías y Generador",
@@ -1605,6 +1612,7 @@ let obsPopoverEl = null; // referencia al popover de "Observación" (agregar/edi
 function getIdColorClass(r){
   if(r.estado === 'CERRADO') return 'id-color-cerrado';
   const proceso = (r.proceso || '').trim().toLowerCase();
+  if(proceso === 'normalizado') return 'id-color-normalizado';
   if(proceso === 'culmina respaldo, indisponible') return 'id-color-indisponible';
   if(proceso === 'caída directa sin alarmas previas de energía' || proceso === 'caida directa sin alarmas previas de energia') return 'id-color-indisponible';
   if(proceso === 'mg portatil') return 'id-color-mg';
@@ -2631,13 +2639,13 @@ function renderInner(){
   }
 
   // Menú flotante que se abre al hacer clic sobre el Id de un registro, para cambiar
-  // rápidamente su estado eléctrico (MG Portátil / Generador / Baterías / Indisponible / Cerrado).
+  // rápidamente su estado eléctrico (MG Portátil / Generador / Baterías / Indisponible / Normalizado).
   const ID_STATUS_OPTIONS = [
     { key:'mg',            label:'MG Portátil',   color:'var(--blue)' },
     { key:'generador',     label:'En Generador',  color:'var(--escip)' },
     { key:'baterias',      label:'En Baterías',   color:'var(--warn)' },
     { key:'indisponible',  label:'Indisponible',  color:'var(--danger)' },
-    { key:'cerrado',       label:'Cerrado',       color:'var(--seguimiento)' }
+    { key:'normalizado',   label:'Normalizado',   color:'var(--normalizado)' }
   ];
   function showIdStatusMenu(cellEl, id){
     closeEscalateMenu();
@@ -2664,8 +2672,8 @@ function renderInner(){
           else if(opcion === 'generador') rec.proceso = 'En Generador';
           else if(opcion === 'baterias') rec.proceso = 'En Baterías';
           else if(opcion === 'indisponible') rec.proceso = 'Culmina respaldo, Indisponible';
-          else if(opcion === 'cerrado'){ rec.estado = 'CERRADO'; rec.cerradoAt = rec.cerradoAt || Date.now(); }
-          if(opcion !== 'cerrado' && (!rec.teams || rec.teams === previousAutoTeams)){
+          else if(opcion === 'normalizado') rec.proceso = 'Normalizado';
+          if(!rec.teams || rec.teams === previousAutoTeams){
             rec.teams = generateTeamsText(rec);
           }
           render();
@@ -2765,6 +2773,33 @@ function tkPartialCloseHtml(r, field, closedField){
   return isClosed
     ? `<button type="button" class="tk-partial-btn tk-partial-closed" data-tk-reopen="${r.id}" data-tk-field="${closedField}" title="Reabrir este TK">${ROW_ICONS.check} Cerrado</button>`
     : `<button type="button" class="tk-partial-btn" data-tk-close="${r.id}" data-tk-field="${closedField}" title="Cerrar solo este TK, sin cerrar todo el registro">Cerrar TK</button>`;
+}
+
+// Igual que tkPartialCloseHtml, pero para la fila resumen (contraída) de un grupo masivo:
+// cierra (o reabre) ese mismo TK — Sev3 o Sev4 — en TODOS los registros abiertos del grupo
+// a la vez, sin tener que expandirlo y hacerlo uno por uno en cada Service ID. Solo aplica
+// cuando, entre los registros abiertos del grupo, hay AMBOS TK diligenciados (igual regla
+// que en un registro individual).
+function tkPartialCloseGroupHtml(groupKey, groupRecords, field, closedField){
+  const abiertos = groupRecords.filter(r => r.estado !== 'CERRADO');
+  if(abiertos.length === 0) return '';
+  const conValor = abiertos.filter(r => (r[field]||'').trim());
+  if(conValor.length === 0) return '';
+  const otherField = field === 'otsSev1' ? 'otsSev2' : 'otsSev1';
+  const conAmbos = conValor.filter(r => (r[otherField]||'').trim());
+  if(conAmbos.length === 0) return '';
+  const isClosed = conAmbos.every(r => !!r[closedField]);
+  return isClosed
+    ? `<button type="button" class="tk-partial-btn tk-partial-closed" data-tk-reopen-group="${groupKey}" data-tk-field="${closedField}" title="Reabrir este TK en todo el lote">${ROW_ICONS.check} Cerrado</button>`
+    : `<button type="button" class="tk-partial-btn" data-tk-close-group="${groupKey}" data-tk-field="${closedField}" title="Cerrar solo este TK en todo el lote, sin cerrar los registros">Cerrar TK</button>`;
+}
+// Indica si, entre los registros abiertos de un grupo masivo que tienen diligenciado un
+// campo de TK, TODOS lo tienen ya cerrado individualmente — para dejar ese valor "en
+// oscuro" (como un TK cerrado) en la fila resumen, en vez de que solo desaparezca cuando
+// el registro completo se cierra.
+function groupFieldAllClosed(groupRecords, field, closedField){
+  const abiertosConValor = groupRecords.filter(r => r.estado !== 'CERRADO' && (r[field]||'').trim());
+  return abiertosConValor.length > 0 && abiertosConValor.every(r => !!r[closedField]);
 }
 
 // Regla de negocio: un registro con TP Change diligenciado no se puede cerrar
@@ -2929,8 +2964,16 @@ function buildRowHtml(r, extraClass){
         </td>
         <td class="mono">${first.gestor === 'HUAWEI' ? 'Huawei' : 'Ericsson'}</td>
         <td class="mono">
-          <div class="ots-stack-item"><span class="ots-tag ots-tag-sev3">SEV3</span>${ticketCellHtml(first.otsSev1, sharedOts1Colors, searchTerm)}</div>
-          <div class="ots-stack-item ots-stack-sep"><span class="ots-tag ots-tag-sev4">SEV4</span>${ticketCellHtml(first.otsSev2, sharedOts2Colors, searchTerm)}</div>
+          <div class="ots-stack-item">
+            <span class="ots-tag ots-tag-sev3">SEV3</span>
+            <span class="${groupFieldAllClosed(groupRecords, 'otsSev1', 'otsSev1Cerrado') ? 'tk-closed-value' : ''}">${ticketCellHtml(first.otsSev1, sharedOts1Colors, searchTerm)}</span>
+            ${tkPartialCloseGroupHtml(groupKey, groupRecords, 'otsSev1', 'otsSev1Cerrado')}
+          </div>
+          <div class="ots-stack-item ots-stack-sep">
+            <span class="ots-tag ots-tag-sev4">SEV4</span>
+            <span class="${groupFieldAllClosed(groupRecords, 'otsSev2', 'otsSev2Cerrado') ? 'tk-closed-value' : ''}">${ticketCellHtml(first.otsSev2, sharedOts2Colors, searchTerm)}</span>
+            ${tkPartialCloseGroupHtml(groupKey, groupRecords, 'otsSev2', 'otsSev2Cerrado')}
+          </div>
           <div><button type="button" class="masivo-toggle-btn masivo-toggle-icon" data-toggle-group="${groupKey}" title="Ver/editar registros individuales">▾</button></div>
         </td>
         <td class="mono">${dash(first.fechaAlarma)}</td>
@@ -3164,6 +3207,32 @@ function buildRowHtml(r, extraClass){
       render();
       await saveRecords();
       showToast('TK reabierto');
+    });
+  });
+  queryAllIn(touchedRows, '[data-tk-close-group]').forEach(btn=>{
+    btn.addEventListener('click', async (e)=>{
+      e.stopPropagation();
+      const gkey = btn.dataset.tkCloseGroup;
+      const field = btn.dataset.tkField;
+      const groupRecords = records.filter(r => getMasivoGroupKey(r) === gkey);
+      if(groupRecords.length === 0) return;
+      groupRecords.forEach(r => { if(r.estado !== 'CERRADO' && (r[field]||'').trim()) r[field] = true; });
+      render();
+      await saveRecords();
+      showToast('TK cerrado en todo el lote (los registros siguen abiertos)');
+    });
+  });
+  queryAllIn(touchedRows, '[data-tk-reopen-group]').forEach(btn=>{
+    btn.addEventListener('click', async (e)=>{
+      e.stopPropagation();
+      const gkey = btn.dataset.tkReopenGroup;
+      const field = btn.dataset.tkField;
+      const groupRecords = records.filter(r => getMasivoGroupKey(r) === gkey);
+      if(groupRecords.length === 0) return;
+      groupRecords.forEach(r => { r[field] = false; });
+      render();
+      await saveRecords();
+      showToast('TK reabierto en todo el lote');
     });
   });
   queryAllIn(touchedRows, '[data-salida]').forEach(btn=>{
