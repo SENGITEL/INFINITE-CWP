@@ -1613,14 +1613,22 @@ function getIdColorClass(r){
   return '';
 }
 
-// Devuelve la clave de agrupación de un registro MASIVO (o null si no aplica), para poder
-// mostrar todos los Service ID de un mismo lote en una sola fila contraída.
+// Devuelve la clave de agrupación de un registro (o null si no aplica), para poder
+// mostrar todos los Service ID relacionados en una sola fila contraída.
 function getMasivoGroupKey(r){
-  if(r.tipoProceso !== 'MASIVO') return null;
-  if(r.masivoGroupId) return r.masivoGroupId;
-  // Compatibilidad con registros masivos creados antes de existir masivoGroupId:
-  // se agrupan por los campos que se comparten al crear el lote.
-  return ['legacy', r.categoria, r.otsSev1, r.fechaAlarma, r.proceso, r.observacion, r.estado, r.otsSev2, r.tpChange].join('|');
+  // Cualquier registro en TP (CHANGE) se agrupa por su número de TP Change — sin importar
+  // si vino del modo Change (uno o varios Service ID) o de un lote masivo con la categoría
+  // "Change" — para que todos los sitios que comparten ese mismo TP salgan en una sola fila.
+  if(r.estado === 'TP (CHANGE)' && (r.tpChange||'').trim()){
+    return 'tpchange:' + r.tpChange.trim().toLowerCase();
+  }
+  if(r.tipoProceso === 'MASIVO'){
+    if(r.masivoGroupId) return r.masivoGroupId;
+    // Compatibilidad con registros masivos creados antes de existir masivoGroupId:
+    // se agrupan por los campos que se comparten al crear el lote.
+    return ['legacy', r.categoria, r.otsSev1, r.fechaAlarma, r.proceso, r.observacion, r.estado, r.otsSev2, r.tpChange].join('|');
+  }
+  return null;
 }
 
 // Valores de TK diligenciados en un registro (OTS Sev 3 / OTS Sev 4 / TP Change), sin vacíos.
@@ -2907,8 +2915,9 @@ function buildRowHtml(r, extraClass){
     const tkSharing = closeTkCluster(groupRecords);
     const tkPending = tkSharing.filter(x=>x.estado!=='CERRADO');
     const tkExtra = tkSharing.length - groupRecords.length; // cuántos vienen de FUERA de este envío masivo
+    const esLoteMasivo = groupRecords.every(x => x.tipoProceso === 'MASIVO');
     return `
-      <tr class="est-${cls} masivo-group-row" data-group="${groupKey}" title="Doble clic para editar todo el lote (agregar sitios, cambiar OTS/TP, etc.)">
+      <tr class="est-${cls} masivo-group-row" data-group="${groupKey}" title="${esLoteMasivo ? 'Doble clic para editar todo el lote (agregar sitios, cambiar OTS/TP, etc.)' : 'Doble clic para ver/editar cada Service ID de este TP Change'}">
         <td>
           <div class="estado-cell">
             ${commonEstado ? badgeHtml(commonEstado) : '<span class="masivo-mixed">Varios</span>'}
@@ -3004,7 +3013,18 @@ function buildRowHtml(r, extraClass){
       if(e.target.closest('button')) return; // no interferir con copiar/eliminar/expandir
       const gkey = tr.dataset.group;
       if(gkey && tr.classList.contains('masivo-group-row')){
-        openMasivoGroupModal(gkey);
+        const groupSample = records.filter(r => getMasivoGroupKey(r) === gkey);
+        const esLoteMasivo = groupSample.length > 0 && groupSample.every(r => r.tipoProceso === 'MASIVO');
+        if(esLoteMasivo){
+          openMasivoGroupModal(gkey);
+        } else {
+          // Grupo agrupado solo porque comparten el mismo número de TP Change (no todos
+          // vienen del mismo lote masivo): no hay un modal de edición conjunta para este
+          // caso — se expande para editar cada Service ID individualmente con doble clic
+          // sobre su fila.
+          expandedMasivoGroups.add(gkey);
+          render();
+        }
         return;
       }
       const id = tr.dataset.id;
@@ -4967,8 +4987,14 @@ function openModal(id, readOnly){
             otsSev1: sharedOtsSev1, serviceId: sid, otsSev2: sharedOtsSev2,
             nombreSitio, categoria: group.categoria, proceso: sharedProceso, observacion: sharedObservacion
           });
+          // Los sitios marcados bajo la categoría "Change" deben aparecer en la pestaña
+          // TP Change igual que los creados desde el modo Change individual — para eso,
+          // esta categoría fuerza el estado a TP (CHANGE) sin importar lo que se haya
+          // dejado seleccionado en el campo "Estado" del formulario (que aplica a las
+          // demás categorías del mismo envío masivo: Baterías, Generador, Caída Directa).
+          const estadoFinal = group.categoria === 'CHANGE' ? 'TP (CHANGE)' : sharedEstado;
           newRecs.push({
-            id: uid(), gestor, estado: sharedEstado,
+            id: uid(), gestor, estado: estadoFinal,
             otsSev1: sharedOtsSev1, fechaAlarma: sharedFecha, otsSev2: sharedOtsSev2, tpChange: sharedTpChange,
             serviceId: sid, nombreSitio, categoria: group.categoria, tipoProceso: 'MASIVO', masivoGroupId, proceso: sharedProceso, observacion: sharedObservacion,
             vip: vipVal, seguridad: seguridadVal, teams: teamsVal,
@@ -4993,8 +5019,16 @@ function openModal(id, readOnly){
       applyRecordsLocally(list => {
         newRecs.forEach(nr => { if(!list.some(x=>x.id===nr.id)) list.push(nr); });
       });
-      switchTab(gestor === 'HUAWEI' ? 'HUAWEI' : 'ERICSSON');
-      showToast(`${totalCreated} registro${totalCreated===1?'':'s'} creado${totalCreated===1?'':'s'}`);
+      // Si TODAS las categorías del envío eran "Change", esos registros quedaron con
+      // estado TP (CHANGE) y no se verían en Ericsson/Huawei (esa pestaña los excluye);
+      // en ese caso se aterriza directo en TP Change para no dar la sensación de que
+      // "no tomó los cambios". Si el envío mezcla categorías, se mantiene el destino
+      // de siempre (Ericsson/Huawei) y los Change quedan disponibles en su pestaña.
+      const soloChange = groups.every(g => g.categoria === 'CHANGE');
+      switchTab(soloChange ? 'TPCHANGE' : (gestor === 'HUAWEI' ? 'HUAWEI' : 'ERICSSON'));
+      const avisoChange = (!soloChange && groups.some(g => g.categoria === 'CHANGE'))
+        ? ' (los de categoría Change quedaron en la pestaña TP Change)' : '';
+      showToast(`${totalCreated} registro${totalCreated===1?'':'s'} creado${totalCreated===1?'':'s'}${avisoChange}`);
       // la reconciliación con el servidor pasa por debajo, sin bloquear
       commitRecordsChange(list => {
         newRecs.forEach(nr => { if(!list.some(x=>x.id===nr.id)) list.push(nr); });
@@ -5338,8 +5372,12 @@ function openMasivoGroupModal(groupKey){
           otsSev1Cerrado: false, otsSev2Cerrado: false
         });
         if(estadoBloqueadoNuevo) bloqueadosGrupo++;
+        // Mismo criterio que al crear un masivo nuevo: un sitio agregado en la categoría
+        // "Change" debe quedar en TP (CHANGE) para que aparezca en esa pestaña, sin
+        // importar el Estado general que se haya dejado en el modal.
+        const estadoNuevo = c.label === 'CHANGE' ? 'TP (CHANGE)' : (estadoBloqueadoNuevo ? first.estado : (sharedEstado || first.estado));
         newRecs.push({
-          id: uid(), gestor, estado: estadoBloqueadoNuevo ? first.estado : (sharedEstado || first.estado),
+          id: uid(), gestor, estado: estadoNuevo,
           otsSev1: sharedOtsSev1, fechaAlarma: sharedFecha, otsSev2: sharedOtsSev2, tpChange: sharedTpChange,
           serviceId: sid, nombreSitio, categoria: c.label, tipoProceso: 'MASIVO', masivoGroupId: effectiveGroupId,
           proceso: sharedProceso, observacion: sharedObservacion,
