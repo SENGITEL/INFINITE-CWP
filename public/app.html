@@ -383,6 +383,26 @@
        viendo igual, solo que ya no invade la celda de al lado.
     */
     overflow:hidden;
+    /* overflow-wrap:anywhere permite partir una palabra/código muy largo (Service ID,
+       ticket, etc.) para que pase a la siguiente línea en vez de quedar recortado por el
+       overflow:hidden de arriba cuando la columna es más angosta que ese contenido. */
+    overflow-wrap:anywhere;
+  }
+  /* Estas etiquetas/chips dentro de una celda tenían white-space:nowrap (pensado para su
+     uso normal, con columna ancha). Si la columna queda angosta, en vez de ocultarse a la
+     mitad pasan a varias líneas — el contenido completo se sigue viendo, solo ocupa más
+     alto en vez de más ancho. */
+  tbody td .badge,
+  tbody td .ticket-shared,
+  tbody td .ingreso-badge,
+  tbody td .tp-badge,
+  tbody td .pill-electrico,
+  tbody td .sid-chip,
+  tbody td .time-cell,
+  tbody td .ots-tag,
+  tbody td .masivo-mixed{
+    white-space:normal;
+    overflow-wrap:anywhere;
   }
   tbody tr{ transition: background .12s ease; cursor:pointer; }
   tbody tr:nth-child(even){ background: rgba(255,255,255,0.012); }
@@ -3216,7 +3236,7 @@ function buildRowHtml(r, extraClass){
       const field = btn.dataset.tkField;
       const groupRecords = records.filter(r => getMasivoGroupKey(r) === gkey);
       if(groupRecords.length === 0) return;
-      groupRecords.forEach(r => { if(r.estado !== 'CERRADO' && (r[field]||'').trim()) r[field] = true; });
+      groupRecords.forEach(r => { if(r.estado !== 'CERRADO') r[field] = true; });
       render();
       await saveRecords();
       showToast('TK cerrado en todo el lote (los registros siguen abiertos)');
@@ -3341,7 +3361,6 @@ function buildRowHtml(r, extraClass){
       showToast(`${pendientes.length} registro(s) marcado(s) como pendiente de cierre`);
     });
   });
-  ensureColumnWidthsLocked(document.getElementById('casesTable'));
 }
 
 /* ---------------- RENDER ELECTRICO REPORTS ---------------- */
@@ -3647,7 +3666,6 @@ function renderElectrico(){
       }
     });
   });
-  ensureColumnWidthsLocked(document.getElementById('electricoTable'));
 }
 
 /* ---------------- RENDER SITES ---------------- */
@@ -3708,7 +3726,6 @@ function renderSites(){
       });
     });
   });
-  ensureColumnWidthsLocked(document.getElementById('sitesTable'));
 }
 
 /* ---------------- CSV EXPORT (cases) ---------------- */
@@ -6027,31 +6044,6 @@ async function loadColumnWidths(tableKey){
     const widths = JSON.parse(res.value);
     return Array.isArray(widths) ? widths : null;
   }catch(e){ return null; }
-}
-
-/* ---------------- ANCHO INICIAL FIJO SEGÚN EL CONTENIDO ----------------
-   Antes de que el usuario arrastre nada, la tabla usa table-layout:auto y el
-   navegador recalcula el ancho "óptimo" de cada columna en cada repintado, lo que
-   hacía que las columnas se vieran "rodando"/saltando de ancho cada vez que
-   llegaban datos nuevos (sincronización en tiempo real, cambio de pestaña, etc.).
-   Para evitarlo: apenas la tabla tiene filas reales (no skeleton) por primera vez,
-   se mide el ancho que el navegador ya calculó a partir de lo que hay cargado y se
-   deja fijo (table-layout:fixed) — el usuario sigue pudiendo cambiar ese ancho
-   arrastrando el borde del encabezado, igual que antes. Si ya había anchos
-   guardados de una sesión previa (ver loadColumnWidths) o la tabla ya quedó fija
-   una vez, no se vuelve a tocar. */
-function ensureColumnWidthsLocked(table){
-  if(!table || table.classList.contains('col-resizable')) return;
-  if(table.offsetParent === null) return; // pestaña oculta: todavía no se puede medir bien
-  const ths = Array.from(table.querySelectorAll('thead th'));
-  if(!ths.length) return;
-  const tbody = table.querySelector('tbody');
-  if(!tbody || !tbody.querySelector('tr:not(.skeleton-row)')) return; // esperar datos reales
-  const widths = ths.map(th => Math.round(th.getBoundingClientRect().width));
-  if(widths.some(w => !w)) return;
-  table.classList.add('col-resizable');
-  ths.forEach((th,i)=>{ th.style.width = widths[i] + 'px'; });
-  if(table.id) saveColumnWidths(table.id, widths);
 }
 
 async function makeTableResizable(table){
