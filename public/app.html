@@ -846,6 +846,37 @@
     border-radius:6px; flex-shrink:0; transition:.12s ease;
   }
   .modal-close-btn:hover{ color:var(--danger); background:var(--danger-bg); }
+  .modal-header-btns{ display:flex; align-items:center; gap:4px; flex-shrink:0; }
+  .modal-min-btn{
+    background:transparent; color:var(--text-faint); font-size:16px; line-height:1; padding:4px 8px;
+    border-radius:6px; flex-shrink:0; transition:.12s ease;
+  }
+  .modal-min-btn:hover{ color:var(--accent); background:var(--panel-2); }
+  .modal h2 .modal-mini-info{ display:none; }
+
+  /* Formulario minimizado: se acopla como una barrita abajo a la derecha y deja la página usable.
+     Los campos siguen en el DOM (solo ocultos), así que todo lo digitado se conserva. */
+  .overlay.minimized{
+    inset:auto; right:20px; bottom:20px; width:auto; padding:0; z-index:60;
+    display:block; background:none; backdrop-filter:none; pointer-events:none;
+  }
+  .overlay.minimized .modal{
+    pointer-events:auto; width:340px; max-width:calc(100vw - 40px); max-height:none;
+    padding:9px 12px; overflow:hidden;
+    border-color:var(--accent-dim); box-shadow:0 10px 30px -8px rgba(0,0,0,0.6), 0 0 0 1px var(--accent-glow);
+  }
+  .overlay.minimized .modal > *:not(.modal-header){ display:none !important; }
+  .overlay.minimized .modal-header{ margin-bottom:0; cursor:pointer; gap:10px; }
+  .overlay.minimized .modal h2{
+    font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0;
+  }
+  .overlay.minimized .modal h2 .modal-mini-info{
+    display:inline; color:var(--text-dim); font-weight:600; margin-left:8px; letter-spacing:0;
+  }
+  @media (max-width:600px){
+    .overlay.minimized{ left:12px; right:12px; bottom:12px; }
+    .overlay.minimized .modal{ width:auto; max-width:none; }
+  }
   .modal p.hint{ color:var(--text-dim); font-size:12.5px; margin:-10px 0 16px; line-height:1.5; }
   .form-grid{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
   .form-grid .full{ grid-column: 1 / -1; }
@@ -4199,7 +4230,7 @@ function openModal(id, readOnly){
   if(isModalOpen){
     const existingOverlay = document.getElementById('overlay');
     if(existingOverlay){
-      showToast('Cierra el formulario que tienes abierto antes de abrir otro', 'info');
+      notifyModalBusy();
       return;
     }
     // no debería pasar, pero por seguridad limpiamos el estado si quedó "colgado"
@@ -4228,8 +4259,11 @@ function openModal(id, readOnly){
   overlay.innerHTML = `
     <div class="modal">
       <div class="modal-header">
-        <h2>${readOnly ? 'Ver registro' : (editingId ? 'Editar registro' : 'Nuevo registro')}</h2>
-        <button type="button" class="modal-close-btn" id="modalCloseX" title="Cerrar">✕</button>
+        <h2>${readOnly ? 'Ver registro' : (editingId ? 'Editar registro' : 'Nuevo registro')}<span class="modal-mini-info" id="modalMiniInfo"></span></h2>
+        <div class="modal-header-btns">
+          <button type="button" class="modal-min-btn" id="modalMinBtn" title="Minimizar">—</button>
+          <button type="button" class="modal-close-btn" id="modalCloseX" title="Cerrar">✕</button>
+        </div>
       </div>
       ${readOnly ? `<p class="hint" style="background:var(--panel-2); border:1px solid var(--line); border-radius:8px; padding:10px 12px; margin-top:-8px;">🔒 Solo lectura — este registro pertenece a la bitácora de ${r.gestor==='HUAWEI'?'Huawei':'Ericsson'}. Para editarlo, hazlo desde esa pestaña.</p>` : ''}
       <div class="form-grid">
@@ -4398,6 +4432,34 @@ function openModal(id, readOnly){
     </div>
   `;
   document.body.appendChild(overlay);
+
+  // Minimizar / maximizar el formulario sin perder lo digitado. Minimizado, el formulario queda
+  // como una barrita acoplada abajo a la derecha y se puede seguir usando la página (consultar
+  // otros registros, copiar TK, etc.). Los campos permanecen en el DOM, solo se ocultan.
+  (function setupModalMinimize(){
+    const minBtn = document.getElementById('modalMinBtn');
+    const headerEl = overlay.querySelector('.modal-header');
+    const miniInfo = document.getElementById('modalMiniInfo');
+    function setMinimized(min){
+      overlay.classList.toggle('minimized', min);
+      minBtn.textContent = min ? '▢' : '—';
+      minBtn.title = min ? 'Maximizar' : 'Minimizar';
+      if(min){
+        const sidEl = document.getElementById('f_serviceId');
+        const sid = sidEl ? sidEl.value.trim() : '';
+        miniInfo.textContent = sid ? '· ' + sid : '';
+      }
+    }
+    minBtn.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      setMinimized(!overlay.classList.contains('minimized'));
+    });
+    // con el formulario minimizado, un clic en la barra (fuera de los botones) lo maximiza
+    headerEl.addEventListener('click', (e)=>{
+      if(overlay.classList.contains('minimized') && !e.target.closest('button')) setMinimized(false);
+    });
+    overlay.restoreFromMinimized = ()=> setMinimized(false);
+  })();
 
   if(readOnly){
     // Vista de solo lectura: deshabilita todos los campos, no permite eliminar/guardar,
@@ -5254,6 +5316,18 @@ function openModal(id, readOnly){
   };
 }
 
+// Aviso cuando se intenta abrir otro formulario con uno ya abierto. Si el abierto está
+// minimizado, se maximiza automáticamente para que la persona lo termine o lo cierre.
+function notifyModalBusy(){
+  const ov = document.getElementById('overlay');
+  if(ov && ov.classList.contains('minimized') && typeof ov.restoreFromMinimized === 'function'){
+    ov.restoreFromMinimized();
+    showToast('Tienes un formulario minimizado: termínalo o ciérralo antes de abrir otro', 'info');
+    return;
+  }
+  showToast('Cierra el formulario que tienes abierto antes de abrir otro', 'info');
+}
+
 function closeModal(){
   const overlay = document.getElementById('overlay');
   if(overlay) overlay.remove();
@@ -5270,7 +5344,7 @@ function openMasivoGroupModal(groupKey){
   const groupRecords = records.filter(r => getMasivoGroupKey(r) === groupKey);
   if(groupRecords.length === 0) return;
   if(isModalOpen && document.getElementById('overlay')){
-    showToast('Cierra el formulario que tienes abierto antes de abrir otro', 'info');
+    notifyModalBusy();
     return;
   }
   isModalOpen = true;
@@ -5500,7 +5574,7 @@ function openMasivoGroupModal(groupKey){
 
 function openSiteModal(id){
   if(isModalOpen && document.getElementById('overlay')){
-    showToast('Cierra el formulario que tienes abierto antes de abrir otro', 'info');
+    notifyModalBusy();
     return;
   }
   isModalOpen = true;
@@ -5729,7 +5803,7 @@ async function commitSiteRecords(recs){
 
 function openImportSitesModal(){
   if(isModalOpen && document.getElementById('overlay')){
-    showToast('Cierra el formulario que tienes abierto antes de abrir otro', 'info');
+    notifyModalBusy();
     return;
   }
   isModalOpen = true;
