@@ -684,8 +684,10 @@
   .electrico-box{
     background:var(--warn-bg); border:1px solid var(--warn); border-radius:8px; padding:10px 12px;
   }
-  .vip-si{ color:var(--danger); font-weight:800; font-family:var(--font-mono); font-size:11px; }
+  .vip-si{ color:var(--escip); font-weight:800; font-family:var(--font-mono); font-size:11px; }
   .vip-no{ color:var(--text-faint); font-family:var(--font-mono); font-size:11px; }
+  .cliente-icon{ margin-left:5px; cursor:help; opacity:0.55; font-size:11px; }
+  .cliente-icon:hover{ opacity:1; }
 
   /* Columna Estado: la insignia de estado y las acciones (editar, escalar, eliminar, etc.)
      se apilan verticalmente dentro de la misma celda, en lugar de usar una columna aparte. */
@@ -897,7 +899,7 @@
     flex:1; padding:9px; border-radius:7px; border:1px solid var(--line); background:var(--panel-2);
     color:var(--text-dim); font-weight:700; font-size:12.5px; font-family:var(--font-mono); transition:.12s ease;
   }
-  .vip-btn.active-si{ background:var(--danger-bg); color:var(--danger); border-color:var(--danger); }
+  .vip-btn.active-si{ background:var(--escip-bg); color:var(--escip); border-color:var(--escip); }
   .vip-btn.active-no{ background:var(--grey-bg); color:var(--text); border-color:var(--text-faint); }
 
   .gestor-toggle{ display:flex; gap:8px; }
@@ -1611,6 +1613,7 @@ const SITE_COLUMNS = [
   { key:'siteId',        label:'Id',            aliases:['id','siteid'] },
   { key:'siteName',      label:'Name',          aliases:['name','sitename'] },
   { key:'vip',           label:'VIP',           aliases:['vip'] },
+  { key:'cliente',       label:'Cliente',       aliases:['cliente','client','customer'] },
   { key:'ubicacion',     label:'Ubicación',     aliases:['ubicacion'] },
   { key:'latitud',       label:'Latitud',       aliases:['latitud','lat'] },
   { key:'longitud',      label:'Longitud',      aliases:['longitud','lon','lng'] },
@@ -2131,7 +2134,7 @@ function findOtsAsociadoPorServiceId(serviceId, excludeId){
 
 function normalizeVip(v){
   const s = String(v||'').trim().toUpperCase();
-  if(['SI','SÍ','SI.','S','YES','TRUE','1'].includes(s)) return 'SI';
+  if(['SI','SÍ','SI.','S','YES','TRUE','1','VIP','X'].includes(s)) return 'SI';
   if(['NO','N','FALSE','0'].includes(s)) return 'NO';
   return null; // no reconocido / vacío en la base
 }
@@ -2938,7 +2941,7 @@ function buildRowHtml(r, extraClass){
         <td class="mono">${dash(r.fechaAlarma)}</td>
         <td class="mono">${tpChangeCellHtml(r, sharedTpChangeColors, searchTerm)}</td>
         <td class="mono">${procesoLedHtml(r.proceso, r.categoria) || ''}<span class="id-cell" style="font-weight:600;" data-id-menu="${r.id}" title="Clic para cambiar el estado eléctrico del sitio">${dashHl(r.serviceId, searchTerm)}</span>${(r.estado !== 'TP (CHANGE)' && r.estado !== 'CERRADO') ? tpChangeBadgeHtml(r.serviceId) : ''}</td>
-        <td class="obs-text">${dash(r.nombreSitio)}${(r.estado!=='INGRESO' && r.estado!=='SALIDA') ? ingresoBadgeHtml(r.serviceId) : ''}</td>
+        <td class="obs-text">${dash(r.nombreSitio)}${(siteInfo && siteInfo.cliente) ? `<span class="cliente-icon" title="Cliente: ${escapeHtml(siteInfo.cliente)}">👤</span>` : ''}${(r.estado!=='INGRESO' && r.estado!=='SALIDA') ? ingresoBadgeHtml(r.serviceId) : ''}</td>
         <td>${procesoHtml}</td>
         <td class="obs-text">
           <div class="obs-cell">
@@ -2946,7 +2949,7 @@ function buildRowHtml(r, extraClass){
             <button type="button" class="obs-edit-btn" data-obs-edit="${r.id}" title="${r.observacion ? 'Ver / editar observación' : 'Agregar observación'}">${r.observacion ? '✎' : '＋'}</button>
           </div>
         </td>
-        <td>${r.vip === 'SI' ? '<span class="vip-si">SÍ</span>' : '<span class="vip-no">NO</span>'}</td>
+        <td>${r.vip === 'SI' ? `<div class="copy-cell"><span class="vip-si">⭐ SÍ</span><button type="button" class="copy-btn" data-copy="${escapeHtml(generateVipEmailText(r))}" title="Copiar correo VIP">✉️</button></div>` : '<span class="vip-no">NO</span>'}</td>
         <td>${siteInfo ? dash(siteInfo.baterias) : '<span class="empty-dash">—</span>'}</td>
         <td>${siteInfo ? dash(siteInfo.generador) : '<span class="empty-dash">—</span>'}</td>
         <td>${r.reporteElectrico
@@ -3035,7 +3038,7 @@ function buildRowHtml(r, extraClass){
         <td class="obs-text">${siteNames.length ? escapeHtml(siteNames.length > 2 ? `${siteNames.slice(0,2).join(', ')} +${siteNames.length-2}` : siteNames.join(', ')) : '<span class="empty-dash">—</span>'}</td>
         <td>${procesoHtml}</td>
         <td class="obs-text">${compactTextHtml(first.observacion, searchTerm)}</td>
-        <td>${vipCount>0 ? `<span class="vip-si">SÍ (${vipCount})</span>` : '<span class="vip-no">NO</span>'}</td>
+        <td>${vipCount>0 ? `<span class="vip-si">⭐ SÍ (${vipCount})</span>` : '<span class="vip-no">NO</span>'}</td>
         <td><span class="empty-dash">—</span></td>
         <td><span class="empty-dash">—</span></td>
         <td>${(()=>{
@@ -3717,8 +3720,8 @@ function renderSites(){
   const sitesRowsHtml = list.map(s => `
     <tr data-siteid="${escapeHtml(s.id)}">
       <td class="mono" style="color:var(--text); font-weight:600;">${dashHl(s.siteId, siteSearchTerm)}</td>
-      <td>${dashHl(s.siteName, siteSearchTerm)}</td>
-      <td>${s.vip && s.vip.toUpperCase()==='SI' ? '<span class="vip-si">SÍ</span>' : dash(s.vip)}</td>
+      <td>${dashHl(s.siteName, siteSearchTerm)}${s.cliente ? `<span class="cliente-icon" title="Cliente: ${escapeHtml(s.cliente)}">👤</span>` : ''}</td>
+      <td>${s.vip && s.vip.toUpperCase()==='SI' ? '<span class="vip-si">⭐ SÍ</span>' : dash(s.vip)}</td>
       <td class="obs-text">${dash(s.ubicacion)}</td>
       <td class="mono">${dash(s.latitud)}</td>
       <td class="mono">${dash(s.longitud)}</td>
@@ -4220,7 +4223,35 @@ function generateChangeTeamsText(r){
   return '|CHANGE|' + parts.join('|') + '|';
 }
 
-/* ---------------- CASE MODAL ---------------- */
+// Texto de correo (asunto + cuerpo) para avisar de un caso en un sitio VIP.
+// Se arma con los mismos datos del registro y, si el sitio tiene Cliente cargado
+// en la base de sitios, se incluye también.
+function generateVipEmailText(r){
+  const site = lookupSiteById(r.serviceId);
+  const cliente = site && site.cliente ? site.cliente : '—';
+  const siteLabel = r.nombreSitio ? `${r.serviceId||''} - ${r.nombreSitio}` : (r.serviceId||'—');
+  const asunto = `[VIP] Alarma activa en sitio ${r.serviceId||''}${r.nombreSitio ? ' - ' + r.nombreSitio : ''}`;
+  const cuerpo = [
+    'Se informa alarma activa en sitio catalogado como VIP.',
+    '',
+    `Sitio: ${siteLabel}`,
+    `Cliente: ${cliente}`,
+    `Estado: ${r.estado || '—'}`,
+    `OTS Sev3: ${r.otsSev1 || '—'}`,
+    `OTS Sev4: ${r.otsSev2 || '—'}`,
+    `TP Change: ${r.tpChange || '—'}`,
+    `Fecha de la alarma: ${r.fechaAlarma || '—'}`,
+    `Proceso afectado: ${r.proceso || '—'}`,
+    `Observación: ${r.observacion || '—'}`,
+    '',
+    `Gestor a cargo: ${r.gestor === 'HUAWEI' ? 'Huawei' : 'Ericsson'}`,
+    '',
+    'Se dará seguimiento y se informará al momento del cierre.'
+  ].join('\n');
+  return `Asunto: ${asunto}\n\n${cuerpo}`;
+}
+
+
 
 function openModal(id, readOnly){
   // Si ya hay un modal de registro abierto, no abrir uno encima (evita que los
