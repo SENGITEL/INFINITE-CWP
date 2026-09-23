@@ -1065,6 +1065,25 @@
   .toast.toast-error{ border-color:rgba(255,77,109,0.4); color:var(--danger); background:var(--danger-bg); box-shadow:0 8px 24px -6px rgba(255,77,109,0.25); }
   .toast.toast-info{ border-color:var(--line); color:var(--text); }
 
+  /* Aviso de solicitud (reporte eléctrico / seguimiento): a propósito NO comparte la
+     posición del toast normal (centrado abajo) para que no pase inadvertido ni tape lo
+     que la persona esté mirando en el centro de la pantalla — aparece arriba a la derecha,
+     se queda un poco más de tiempo y trae su propia animación de entrada. */
+  .request-toast{
+    position:fixed; top:20px; right:20px; max-width:320px;
+    background:var(--panel-2); border:1px solid var(--seguimiento); color:var(--text);
+    padding:13px 16px; border-radius:10px; font-family:var(--font-ui); font-size:13px;
+    line-height:1.4; z-index:210; opacity:0; pointer-events:none;
+    box-shadow: 0 10px 28px -6px rgba(0,0,0,0.5);
+    display:flex; align-items:flex-start; gap:10px;
+    transform:translateX(16px);
+    transition:opacity .22s ease, transform .22s ease;
+  }
+  .request-toast.show{ opacity:1; transform:translateX(0); pointer-events:auto; }
+  .request-toast .request-toast-icon{ font-size:18px; line-height:1; flex-shrink:0; }
+  .request-toast .request-toast-title{ font-weight:700; margin-bottom:2px; color:var(--seguimiento); }
+  .request-toast .request-toast-body{ color:var(--text-dim); font-size:12px; }
+
   /* skeleton loading state */
   @keyframes skeleton-shimmer{
     0%{ background-position: -200px 0; }
@@ -1322,6 +1341,7 @@
 <datalist id="siteIdList"></datalist>
 
 <div class="toast" id="toast"></div>
+<div class="request-toast" id="requestToast"></div>
 
 <script>
 /* ---------------- ALMACENAMIENTO REAL EN SERVIDOR LOCAL ----------------
@@ -1805,6 +1825,20 @@ function showToast(msg, type){
   t.classList.add('show');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(()=> t.classList.remove('show'), type === 'error' ? 3200 : 1800);
+}
+
+let requestToastTimer = null;
+// Aviso específico para "se solicitó reporte eléctrico" / "se solicitó seguimiento":
+// aparece arriba a la derecha (no en el centro de la pantalla, donde vive el toast
+// normal) y se queda un poco más para que no pase desapercibido.
+function showRequestToast(icon, title, body){
+  const el = document.getElementById('requestToast');
+  el.innerHTML = `<span class="request-toast-icon" aria-hidden="true">${icon}</span>` +
+    `<span><div class="request-toast-title">${escapeHtml(title)}</div>` +
+    (body ? `<div class="request-toast-body">${escapeHtml(body)}</div>` : '') + `</span>`;
+  el.classList.add('show');
+  clearTimeout(requestToastTimer);
+  requestToastTimer = setTimeout(()=> el.classList.remove('show'), 4200);
 }
 
 // Copia texto al portapapeles. Primero intenta la API moderna (navigator.clipboard);
@@ -3343,6 +3377,7 @@ function buildRowHtml(r, extraClass){
       render();
       await saveRecords();
       showToast(`Nuevo seguimiento solicitado (${rec.seguimientoSolicitadoCount})`);
+      showRequestToast('🔔', 'Seguimiento solicitado', rec.serviceId || '');
     });
   });
   queryAllIn(touchedRows, '[data-escalate]').forEach(btn=>{
@@ -3726,6 +3761,7 @@ function renderElectrico(){
         render();
         await saveRecords();
         showToast(cb.checked ? 'Aviso de seguimiento atendido' : 'Aviso marcado como pendiente nuevamente');
+        if(cb.checked) showRequestToast('✅', 'Seguimiento atendido', rec.serviceId || '');
       }
     });
   });
@@ -3753,6 +3789,8 @@ function renderElectrico(){
       if(!rec) return;
       rec.seguimientoTexto = input.value;
       rec.reporteElectricoSeguimientoAt = Date.now();
+      // Al diligenciar el seguimiento ya no hace falta marcar "Enviado" aparte: se marca solo.
+      if(input.value.trim() !== '') rec.reporteElectricoEnviado = true;
       await saveRecords();
     };
     input.addEventListener('input', ()=>{
@@ -3763,6 +3801,10 @@ function renderElectrico(){
       await commitSilently();
       render();
       showToast('Seguimiento guardado');
+      if(input.value.trim() !== ''){
+        const rec = records.find(x=>x.id === id);
+        showRequestToast('📝', 'Seguimiento diligenciado', (rec ? (rec.serviceId||'') : '') + ' · marcado como enviado');
+      }
     });
     input.addEventListener('blur', async ()=>{
       if(saveTimer) await commitSilently();
@@ -3783,9 +3825,17 @@ function renderElectrico(){
         return;
       }
       seguimientoOtroSelectedIds.delete(id);
-      await touchSeguimiento(id, rec => { rec.seguimientoTexto = value; });
+      // Al diligenciar el seguimiento ya no hace falta marcar "Enviado" aparte: se marca solo.
+      await touchSeguimiento(id, rec => {
+        rec.seguimientoTexto = value;
+        if(value.trim() !== '') rec.reporteElectricoEnviado = true;
+      });
       render();
       showToast('Seguimiento guardado');
+      if(value.trim() !== ''){
+        const rec = records.find(x=>x.id === id);
+        showRequestToast('📝', 'Seguimiento diligenciado', (rec ? (rec.serviceId||'') : '') + ' · marcado como enviado');
+      }
     });
   });
   queryAllIn(touchedRows, '[data-reportetexto]').forEach(input=>{
@@ -5345,6 +5395,11 @@ function openModal(id, readOnly){
       const avisoChange = (!soloChange && groups.some(g => g.categoria === 'CHANGE'))
         ? ' (los de categoría Change quedaron en la pestaña TP Change)' : '';
       showToast(`${totalCreated} registro${totalCreated===1?'':'s'} creado${totalCreated===1?'':'s'}${avisoChange}`);
+      if(sharedReporteElectrico && sharedSeguimientoSolicitado){
+        showRequestToast('⚡🔔', 'Reporte eléctrico y seguimiento solicitados', `${totalCreated} registro${totalCreated===1?'':'s'}`);
+      } else if(sharedReporteElectrico){
+        showRequestToast('⚡', 'Reporte eléctrico solicitado', `${totalCreated} registro${totalCreated===1?'':'s'}`);
+      }
       // la reconciliación con el servidor pasa por debajo, sin bloquear
       commitRecordsChange(list => {
         newRecs.forEach(nr => { if(!list.some(x=>x.id===nr.id)) list.push(nr); });
@@ -5369,6 +5424,7 @@ function openModal(id, readOnly){
     }
 
     const isNewSeguimientoRequest = seguimientoCb.checked && seguimientoSessionBumps > 0;
+    const isNewReporteRequest = reporteElectricoCb.checked && !r.reporteElectrico;
     const seguimientoSolicitadoCount = (r.seguimientoSolicitadoCount || 0) + seguimientoSessionBumps;
     const nuevoEstado = document.getElementById('f_estado').value;
 
@@ -5474,6 +5530,13 @@ function openModal(id, readOnly){
     else if(updated.estado === 'TP (CHANGE)') tpChangeViewMode = 'activos';
     switchTab(openedFromTab === 'ELECTRICO' ? 'ELECTRICO' : (cerroSiendoTpChange ? 'TPCHANGE' : (updated.estado === 'CERRADO' ? 'CERRADOS' : ((updated.estado === 'INGRESO' || updated.estado === 'SALIDA') ? 'INGRESOS' : (updated.estado === 'TP (CHANGE)' ? 'TPCHANGE' : (gestor === 'HUAWEI' ? 'HUAWEI' : 'ERICSSON'))))));
     showToast(editingId ? 'Cambios guardados' : 'Registro creado');
+    if(isNewReporteRequest && isNewSeguimientoRequest){
+      showRequestToast('⚡🔔', 'Reporte eléctrico y seguimiento solicitados', updated.serviceId || '');
+    } else if(isNewReporteRequest){
+      showRequestToast('⚡', 'Reporte eléctrico solicitado', updated.serviceId || '');
+    } else if(isNewSeguimientoRequest){
+      showRequestToast('🔔', 'Seguimiento solicitado', updated.serviceId || '');
+    }
     if(updated.estado === 'CERRADO' && r.estado === 'TP (CHANGE)'){
       avisarOtsAsociadosSiAplica({ ...updated, estado: 'TP (CHANGE)' });
     }
