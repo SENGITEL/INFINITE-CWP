@@ -3559,7 +3559,7 @@ function renderElectrico(){
     if(electricoViewMode === 'cerrados') return isCerrado(r);
     return !isCerrado(r);
   }).slice()
-    .sort((a,b)=> (isPendingAviso(b)?1:0)-(isPendingAviso(a)?1:0) || (a.fechaAlarma||'').localeCompare(b.fechaAlarma||'') || (a.createdAt||0)-(b.createdAt||0));
+    .sort((a,b)=> (isPendingAviso(b)?1:0)-(isPendingAviso(a)?1:0) || (b.fechaAlarma||'').localeCompare(a.fechaAlarma||'') || (b.createdAt||0)-(a.createdAt||0));
 
   if(Object.keys(electricoColFilters).length > 0){
     list = list.filter(electricoPassesColFilters);
