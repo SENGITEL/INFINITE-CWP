@@ -1415,6 +1415,12 @@ function reporteResumenTexto(r){
   const prov = proveedorLabelForRecord(r);
   if(prov) partes.push(`Proveedor: ${prov}`);
   if((r.seguimientoTexto||'').trim()) partes.push(`Seguimiento: ${r.seguimientoTexto.trim()}`);
+  // Fecha/hora del último movimiento: la del seguimiento si ya hubo uno, si no, la de creación.
+  const fechaTs = r.reporteElectricoSeguimientoAt || r.reporteElectricoCreatedAt;
+  if(fechaTs){
+    const etiquetaFecha = r.reporteElectricoSeguimientoAt ? 'Fecha seguimiento' : 'Fecha creación';
+    partes.push(`${etiquetaFecha}: ${formatDateTime(fechaTs)}`);
+  }
   return partes.join(' | ');
 }
 function reporteResumenCellHtml(r){
