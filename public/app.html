@@ -1651,6 +1651,7 @@ let sites = [];
 let activeTab = "ERICSSON"; // ERICSSON | HUAWEI | SITES
 let activeFilters = new Set();
 let ingresosSubFilter = 'INGRESOS'; // 'INGRESOS' (por defecto: solo entradas sin salida registrada) | 'SALIDAS' (solo con salida registrada)
+let tpChangeViewMode = 'activos'; // 'activos' | 'cerrados' — igual que en Reportes Eléctricos: un TP (Change) cerrado se queda en esta misma pestaña
 let editingId = null;
 let editingSiteId = null;
 let isModalOpen = false;
@@ -2187,8 +2188,26 @@ function currentGestor(){
 function buildFilterChips(){
   const box = document.getElementById('filters');
   box.querySelectorAll('.chip').forEach(c=>c.remove());
-  if(activeTab === 'CERRADOS' || activeTab === 'TPCHANGE') return; // en Cerrados y TP Change no aplican los chips de estado (todos comparten el mismo estado)
+  if(activeTab === 'CERRADOS') return; // en Cerrados no aplican los chips de estado (todos comparten el mismo estado)
   const searchEl = document.getElementById('searchInput');
+  if(activeTab === 'TPCHANGE'){
+    // Igual que Ingresos/Salidas: mutuamente excluyentes, siempre uno activo.
+    const baseTpChange = records.filter(r => r.tpChangeRecord || r.estado === 'TP (CHANGE)');
+    const countActivos = baseTpChange.filter(r => r.estado !== 'CERRADO').length;
+    const countCerrados = baseTpChange.filter(r => r.estado === 'CERRADO').length;
+    [{key:'activos', label:'Activos', n:countActivos}, {key:'cerrados', label:'Cerrados', n:countCerrados}].forEach(o=>{
+      const chip = document.createElement('div');
+      chip.className = 'chip chip-ingreso-toggle' + (tpChangeViewMode === o.key ? ' active' : '');
+      chip.textContent = `${o.label} ${o.n}`;
+      chip.onclick = ()=>{
+        tpChangeViewMode = o.key;
+        buildFilterChips();
+        render();
+      };
+      box.insertBefore(chip, searchEl);
+    });
+    return;
+  }
   if(activeTab === 'INGRESOS'){
     // Los chips "Ingresos"/"Salidas" son mutuamente excluyentes: siempre hay exactamente
     // uno activo (nunca los dos a la vez, nunca ninguno) para que no exista un estado
@@ -2640,6 +2659,11 @@ function render(){
 
 function renderInner(){
   updateKpis();
+  // Marca permanente: una vez que un registro pasa por estado TP (CHANGE), queda
+  // identificado como registro de TP Change para siempre, aunque luego se cierre y su
+  // `estado` pase a CERRADO — así la pestaña TP Change lo puede seguir mostrando (con el
+  // filtro Activos/Cerrados) en vez de que desaparezca hacia la pestaña Cerrados.
+  records.forEach(r => { if(r.estado === 'TP (CHANGE)' && !r.tpChangeRecord) r.tpChangeRecord = true; });
   sitiosConIngreso = new Set(records.filter(r => r.estado === 'INGRESO' && r.serviceId).map(r => r.serviceId));
   sitiosConTpChange = new Set(records.filter(r => r.estado === 'TP (CHANGE)' && r.serviceId).map(r => r.serviceId));
   // Mapa Service ID -> número de TP Change, tomado de los registros que viven en la
@@ -2695,9 +2719,14 @@ function renderInner(){
       ? records.filter(r => r.estado === 'SALIDA')
       : records.filter(r => r.estado === 'INGRESO');
   } else if(isTpChangeTab){
-    // Todos los registros en estado TP (CHANGE), de ambos gestores, separados igual
-    // que Ingresos: no aparecen mezclados en las pestañas de Ericsson/Huawei.
-    list = records.filter(r => r.estado === 'TP (CHANGE)');
+    // Todos los registros marcados como TP Change (alguna vez estuvieron en estado
+    // TP (CHANGE)), de ambos gestores, separados igual que Ingresos: no aparecen mezclados
+    // en las pestañas de Ericsson/Huawei. El chip Activos/Cerrados decide cuáles de esos
+    // se muestran: ya no desaparecen hacia la pestaña Cerrados al cerrarse.
+    const baseTpChange = records.filter(r => r.tpChangeRecord || r.estado === 'TP (CHANGE)');
+    list = tpChangeViewMode === 'cerrados'
+      ? baseTpChange.filter(r => r.estado === 'CERRADO')
+      : baseTpChange.filter(r => r.estado !== 'CERRADO');
   } else {
     list = records.filter(r => (r.gestor||'ERICSSON') === gestor && r.estado !== 'CERRADO' && r.estado !== 'INGRESO' && r.estado !== 'SALIDA' && r.estado !== 'TP (CHANGE)');
   }
@@ -2737,7 +2766,7 @@ function renderInner(){
       `Ingresos (Ericsson + Huawei) · ${list.length} registro${list.length===1?'':'s'}`;
   } else if(isTpChangeTab){
     document.getElementById('subtitle').textContent =
-      `TP Change (Ericsson + Huawei) · ${list.length} registro${list.length===1?'':'s'}`;
+      `TP Change (Ericsson + Huawei) · vista ${tpChangeViewMode === 'cerrados' ? 'Cerrados' : 'Activos'} · ${list.length} registro${list.length===1?'':'s'}`;
   } else {
     const gestorLabel = gestor === 'HUAWEI' ? 'Huawei' : 'Ericsson';
     const totalForTab = records.filter(r => (r.gestor||'ERICSSON') === gestor && r.estado !== 'CERRADO' && r.estado !== 'INGRESO' && r.estado !== 'SALIDA' && r.estado !== 'TP (CHANGE)').length;
@@ -2748,7 +2777,7 @@ function renderInner(){
   document.getElementById('emptyState').style.display = list.length === 0 ? 'block' : 'none';
   document.getElementById('emptyState').textContent = isCerradosTab
     ? 'No hay registros cerrados todavía.'
-    : (isIngresosTab ? 'No hay registros en ingreso todavía.' : (isTpChangeTab ? 'No hay registros de TP Change todavía.' : 'No hay registros todavía en esta pestaña. Crea el primero con "+ Nuevo registro".'));
+    : (isIngresosTab ? 'No hay registros en ingreso todavía.' : (isTpChangeTab ? (tpChangeViewMode === 'cerrados' ? 'No hay registros de TP Change cerrados todavía.' : 'No hay registros de TP Change activos todavía.') : 'No hay registros todavía en esta pestaña. Crea el primero con "+ Nuevo registro".'));
 
   const sharedOts1Colors = computeSharedTicketColors(list, 'otsSev1');
   const sharedOts2Colors = computeSharedTicketColors(list, 'otsSev2');
@@ -3714,11 +3743,29 @@ function renderElectrico(){
   }
   queryAllIn(touchedRows, '[data-seguimientotexto]').forEach(input=>{
     trackInlineEditing(input);
+    // Mismo autoguardado con debounce que en "Detalle del reporte": no hace falta salir
+    // del campo para que el texto quede guardado.
+    let saveTimer = null;
+    const id = input.dataset.seguimientotexto;
+    const commitSilently = async ()=>{
+      if(saveTimer){ clearTimeout(saveTimer); saveTimer = null; }
+      const rec = records.find(x=>x.id === id);
+      if(!rec) return;
+      rec.seguimientoTexto = input.value;
+      rec.reporteElectricoSeguimientoAt = Date.now();
+      await saveRecords();
+    };
+    input.addEventListener('input', ()=>{
+      if(saveTimer) clearTimeout(saveTimer);
+      saveTimer = setTimeout(commitSilently, 700);
+    });
     input.addEventListener('change', async (e)=>{
-      const id = input.dataset.seguimientotexto;
-      await touchSeguimiento(id, rec => { rec.seguimientoTexto = input.value; });
+      await commitSilently();
       render();
       showToast('Seguimiento guardado');
+    });
+    input.addEventListener('blur', async ()=>{
+      if(saveTimer) await commitSilently();
     });
   });
   queryAllIn(touchedRows, '[data-seguimientoselect]').forEach(sel=>{
@@ -3743,11 +3790,32 @@ function renderElectrico(){
   });
   queryAllIn(touchedRows, '[data-reportetexto]').forEach(input=>{
     trackInlineEditing(input);
+    // Autoguardado mientras se escribe: guarda solo (sin re-pintar la tabla, para no
+    // interrumpir el cursor mientras el campo sigue enfocado) 700ms después de la última
+    // tecla. Así el texto queda guardado aunque la persona nunca haga clic fuera del campo
+    // ni presione Enter — ya no hace falta "confirmarlo"/"enviarlo" para que se actualice.
+    let saveTimer = null;
+    const id = input.dataset.reportetexto;
+    const commitSilently = async ()=>{
+      if(saveTimer){ clearTimeout(saveTimer); saveTimer = null; }
+      const rec = records.find(x=>x.id === id);
+      if(!rec) return;
+      rec.reporteElectricoTexto = input.value;
+      rec.reporteElectricoSeguimientoAt = Date.now();
+      await saveRecords();
+    };
+    input.addEventListener('input', ()=>{
+      if(saveTimer) clearTimeout(saveTimer);
+      saveTimer = setTimeout(commitSilently, 700);
+    });
     input.addEventListener('change', async (e)=>{
-      const id = input.dataset.reportetexto;
-      await touchSeguimiento(id, rec => { rec.reporteElectricoTexto = input.value; });
+      await commitSilently();
       render();
       showToast('Reporte eléctrico guardado');
+    });
+    input.addEventListener('blur', async ()=>{
+      // por si quedó un guardado pendiente (se salió del campo antes de los 700ms)
+      if(saveTimer) await commitSilently();
     });
   });
   queryAllIn(touchedRows, '[data-proveedor]').forEach(sel=>{
@@ -4114,7 +4182,12 @@ async function exportToCSV(){
   else if(isIngresosTab) list = ingresosSubFilter === 'SALIDAS'
     ? records.filter(r => r.estado === 'SALIDA')
     : records.filter(r => r.estado === 'INGRESO');
-  else if(isTpChangeTab) list = records.filter(r => r.estado === 'TP (CHANGE)');
+  else if(isTpChangeTab){
+    const baseTpChange = records.filter(r => r.tpChangeRecord || r.estado === 'TP (CHANGE)');
+    list = tpChangeViewMode === 'cerrados'
+      ? baseTpChange.filter(r => r.estado === 'CERRADO')
+      : baseTpChange.filter(r => r.estado !== 'CERRADO');
+  }
   else list = records.filter(r => (r.gestor||'ERICSSON') === gestor && r.estado !== 'CERRADO' && r.estado !== 'INGRESO' && r.estado !== 'SALIDA' && r.estado !== 'TP (CHANGE)');
   if(list.length === 0){
     showToast(isCerradosTab ? 'No hay registros cerrados para exportar' : (isIngresosTab ? 'No hay registros en ingreso para exportar' : (isTpChangeTab ? 'No hay registros de TP Change para exportar' : 'No hay registros para exportar en esta pestaña')), 'info');
@@ -5394,7 +5467,12 @@ function openModal(id, readOnly){
     // INGRESO, en "Ingresos" — así nunca desaparece detrás del filtro contrario.
     if(updated.estado === 'INGRESO') ingresosSubFilter = 'INGRESOS';
     else if(updated.estado === 'SALIDA') ingresosSubFilter = 'SALIDAS';
-    switchTab(openedFromTab === 'ELECTRICO' ? 'ELECTRICO' : (updated.estado === 'CERRADO' ? 'CERRADOS' : ((updated.estado === 'INGRESO' || updated.estado === 'SALIDA') ? 'INGRESOS' : (updated.estado === 'TP (CHANGE)' ? 'TPCHANGE' : (gestor === 'HUAWEI' ? 'HUAWEI' : 'ERICSSON')))));
+    // Un registro que fue TP (Change) y se cerró desde el formulario (no solo con el botón
+    // de cerrar) se queda igual en la pestaña TP Change, mostrando el chip "Cerrados".
+    const cerroSiendoTpChange = updated.estado === 'CERRADO' && (updated.tpChangeRecord || r.estado === 'TP (CHANGE)');
+    if(cerroSiendoTpChange) tpChangeViewMode = 'cerrados';
+    else if(updated.estado === 'TP (CHANGE)') tpChangeViewMode = 'activos';
+    switchTab(openedFromTab === 'ELECTRICO' ? 'ELECTRICO' : (cerroSiendoTpChange ? 'TPCHANGE' : (updated.estado === 'CERRADO' ? 'CERRADOS' : ((updated.estado === 'INGRESO' || updated.estado === 'SALIDA') ? 'INGRESOS' : (updated.estado === 'TP (CHANGE)' ? 'TPCHANGE' : (gestor === 'HUAWEI' ? 'HUAWEI' : 'ERICSSON'))))));
     showToast(editingId ? 'Cambios guardados' : 'Registro creado');
     if(updated.estado === 'CERRADO' && r.estado === 'TP (CHANGE)'){
       avisarOtsAsociadosSiAplica({ ...updated, estado: 'TP (CHANGE)' });
