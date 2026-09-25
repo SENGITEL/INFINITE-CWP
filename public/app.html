@@ -1229,8 +1229,6 @@
               <th>Proceso</th>
               <th>Observación</th>
               <th>VIP</th>
-              <th>Baterías</th>
-              <th>Generador</th>
               <th>Elec.</th>
               <th>Reporte Eléctrico</th>
               <th>Proveedor</th>
@@ -1280,8 +1278,6 @@
               <th>Medidor</th>
               <th>NIS</th>
               <th>Ubicación</th>
-              <th>Baterías</th>
-              <th>Generador</th>
               <th>Hora creación</th>
               <th>Hora seguimiento</th>
               <th>Reporte enviado</th>
@@ -1320,8 +1316,6 @@
               <th>Distrito</th>
               <th>Corregimiento</th>
               <th>Proveedor</th>
-              <th>Baterías</th>
-              <th>Generador</th>
               <th>Seguridad</th>
               <th>Actualizado</th>
               <th></th>
@@ -2299,8 +2293,6 @@ const ELECTRICO_COL_FILTERS = [
   { key:'medidor', type:'text', get: r => (lookupSiteById(r.serviceId)||{}).medidor || '' },
   { key:'nis', type:'text', get: r => (lookupSiteById(r.serviceId)||{}).nis || '' },
   { key:'ubicacion', type:'text', get: r => (lookupSiteById(r.serviceId)||{}).ubicacion || '' },
-  { key:null }, // Baterías (columna oculta)
-  { key:null }, // Generador (columna oculta)
   { key:'horaCreacion', type:'text', get: r => r.reporteElectricoCreatedAt ? formatDateTime(r.reporteElectricoCreatedAt) : '' },
   { key:'horaSeguimiento', type:'text', get: r => r.reporteElectricoSeguimientoAt ? formatDateTime(r.reporteElectricoSeguimientoAt) : '' },
   { key:'enviado', type:'select', options:['Enviado','Pendiente'], get: r => r.reporteElectricoEnviado ? 'Enviado' : 'Pendiente' },
@@ -3112,8 +3104,6 @@ function buildRowHtml(r, extraClass){
           </div>
         </td>
         <td>${r.vip === 'SI' ? '<span class="vip-si">SÍ</span>' : '<span class="vip-no">NO</span>'}</td>
-        <td>${siteInfo ? dash(siteInfo.baterias) : '<span class="empty-dash">—</span>'}</td>
-        <td>${siteInfo ? dash(siteInfo.generador) : '<span class="empty-dash">—</span>'}</td>
         <td>${r.reporteElectrico
           ? `${r.reporteElectricoEnviado ? '<span class="pill-electrico pill-electrico-atendido">✓ Atendido</span>' : '<span class="pill-electrico">⚡ Solicitado</span>'}${avisoSeguimientoHtml(r)}`
           : '<span class="empty-dash">—</span>'}</td>
@@ -3699,8 +3689,6 @@ function renderElectrico(){
                 : `<button type="button" class="ubic-toggle-btn" data-ubictoggle="${r.id}">📍 Dirección</button>`)
             : '<span class="empty-dash">—</span>'}
         </td>
-        <td>${site ? dash(site.baterias) : '<span class="empty-dash">—</span>'}</td>
-        <td>${site ? dash(site.generador) : '<span class="empty-dash">—</span>'}</td>
         <td class="time-cell">${formatDateTime(r.reporteElectricoCreatedAt)}</td>
         <td class="time-cell">${formatDateTime(r.reporteElectricoSeguimientoAt)}</td>
         <td onclick="event.stopPropagation();">
@@ -3940,8 +3928,6 @@ function renderSites(){
       <td>${dash(s.distrito)}</td>
       <td>${dash(s.corregimiento)}</td>
       <td>${dash(s.proveedor)}</td>
-      <td>${dash(s.baterias)}</td>
-      <td>${dash(s.generador)}</td>
       <td>${dash(s.seguridad)}</td>
       <td class="mono">${s.updatedAt ? new Date(s.updatedAt).toLocaleDateString('es-CO') : '—'}</td>
       <td><button class="del-btn" data-delsite="${escapeHtml(s.id)}" title="Eliminar">✕</button></td>
@@ -6327,7 +6313,17 @@ document.addEventListener('contextmenu', (e)=>{
 });
 
 /* ---------------- COLUMNAS AJUSTABLES (arrastrar el borde derecho de cada encabezado) ----------------
-   El ancho elegido se recuerda por gestor (como el tema), no se comparte con los demás. */
+   El ancho elegido se recuerda por gestor (como el tema), no se comparte con los demás.
+   Además, cada tabla arranca SIEMPRE con un ancho fijo por columna (estos valores por
+   defecto), en vez de dejar que el navegador calcule el ancho según el contenido: así
+   una celda con mucho texto (observación, seguimiento, etc.) no "empuja" ni corre las
+   columnas vecinas — el texto simplemente pasa a varias líneas dentro de su columna. */
+const DEFAULT_COL_WIDTHS = {
+  casesTable: [110,90,150,130,110,100,160,130,220,60,70,130,100,200,90,140,100,150,160,130,130,130,110],
+  electricoTable: [90,90,110,130,100,100,100,160,130,130,110,120,180,100,90,180,130,130,120,50],
+  sitesTable: [90,160,60,200,90,90,100,90,110,110,130,100,110,110,50]
+};
+
 async function saveColumnWidths(tableKey, widths){
   try{ await window.storage.set(`col-widths:${tableKey}`, JSON.stringify(widths), false); }
   catch(e){ /* preferencia de ancho no crítica: si falla, simplemente no se recuerda */ }
@@ -6348,11 +6344,18 @@ async function makeTableResizable(table){
   const ths = Array.from(table.querySelectorAll('thead th'));
   if(ths.length === 0) return;
 
-  // aplica anchos guardados de una sesión anterior, si existen
+  // anchos guardados de una sesión anterior (si el gestor ya movió alguna columna a mano)
   const saved = tableKey ? await loadColumnWidths(tableKey) : null;
-  if(saved && saved.length === ths.length){
+  const defaults = tableKey ? DEFAULT_COL_WIDTHS[tableKey] : null;
+  const widthsToApply = (saved && saved.length === ths.length) ? saved
+    : (defaults && defaults.length === ths.length) ? defaults
+    : null;
+
+  // layout fijo desde el inicio: cada columna respeta su ancho asignado (guardado o por
+  // defecto) sin importar cuánto texto tenga una celda.
+  if(widthsToApply){
     table.classList.add('col-resizable');
-    ths.forEach((th,i)=>{ if(saved[i]) th.style.width = saved[i] + 'px'; });
+    ths.forEach((th,i)=>{ if(widthsToApply[i]) th.style.width = widthsToApply[i] + 'px'; });
   }
 
   ths.forEach((th, idx)=>{
