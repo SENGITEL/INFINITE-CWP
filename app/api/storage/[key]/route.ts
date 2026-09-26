@@ -1,20 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/db";
-import { createHash } from "crypto";
 
-// Huella del contenido guardado: si el valor no cambió, la huella tampoco.
-// Se usa como ETag para que el cliente pueda preguntar "¿sigue siendo esta?"
-// en vez de tener que volver a descargar el bloque completo cada vez.
-function computeEtag(value: string) {
-  return '"' + createHash("sha1").update(value).digest("hex") + '"';
-}
-
-// GET /api/storage/[key] -> { value } si existe, 404 si no existe.
-// Si el cliente manda "If-None-Match" con la misma huella que ya tenemos guardada,
-// se responde 304 sin cuerpo: así los sondeos que no encuentran nada nuevo (que son
-// la mayoría) casi no consumen ancho de banda.
+// GET /api/storage/[key] -> { value } si existe, 404 si no existe
 export async function GET(
-  req: NextRequest,
+  _req: NextRequest,
   { params }: { params: Promise<{ key: string }> }
 ) {
   const { key } = await params;
@@ -27,12 +16,7 @@ export async function GET(
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
 
-  const etag = computeEtag(item.value);
-  if (req.headers.get("if-none-match") === etag) {
-    return new NextResponse(null, { status: 304, headers: { ETag: etag } });
-  }
-
-  return NextResponse.json({ key, value: item.value }, { headers: { ETag: etag } });
+  return NextResponse.json({ key, value: item.value });
 }
 
 // POST /api/storage/[key] -> recibe { value } y lo guarda (crea o actualiza)
@@ -50,10 +34,7 @@ export async function POST(
     create: { key, value },
   });
 
-  return NextResponse.json(
-    { key, value: item.value },
-    { headers: { ETag: computeEtag(item.value) } }
-  );
+  return NextResponse.json({ key, value: item.value });
 }
 
 // DELETE /api/storage/[key] -> elimina el registro
