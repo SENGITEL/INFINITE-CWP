@@ -1362,9 +1362,6 @@
    Claves "compartidas" (shared=true) -> viajan al servidor (server.js).
    Claves "personales" (shared=false, ej. tema claro/oscuro) -> se quedan
    solo en el navegador de cada equipo (localStorage), como ya era antes. */
-// huella (ETag) de la última respuesta recibida por cada clave "compartida", para poder
-// preguntarle al servidor "¿sigue siendo esta?" en vez de re-descargar todo cada sondeo
-const storageEtagCache = new Map();
 window.storage = {
   async get(key, shared){
     if(!shared){
@@ -1372,20 +1369,9 @@ window.storage = {
       if(v === null) throw new Error('not_found');
       return { key, value: v, shared:false };
     }
-    // Se manda la huella (ETag) de la última respuesta para este key, si hay una: si el
-    // servidor confirma que sigue siendo la misma (304), se reutiliza lo que ya teníamos
-    // en vez de volver a descargar el bloque completo — la mayoría de los sondeos caen
-    // aquí, porque no siempre hay algo nuevo cada 90 segundos.
-    const cached = storageEtagCache.get(key);
-    const res = await fetch('/api/storage/' + encodeURIComponent(key), {
-      headers: cached ? { 'If-None-Match': cached.etag } : {}
-    });
-    if(res.status === 304 && cached) return { key, value: cached.value, shared:true };
+    const res = await fetch('/api/storage/' + encodeURIComponent(key));
     if(!res.ok) throw new Error('not_found');
     const data = await res.json();
-    const etag = res.headers.get('ETag');
-    if(etag) storageEtagCache.set(key, { etag, value: data.value });
-    else storageEtagCache.delete(key);
     return { key, value: data.value, shared:true };
   },
   async set(key, value, shared){
@@ -1399,9 +1385,6 @@ window.storage = {
       body: JSON.stringify({ value })
     });
     if(!res.ok) throw new Error('save_failed');
-    // se invalida la huella guardada: lo que este equipo acaba de escribir puede no
-    // coincidir con lo que el próximo GET calcule si otro equipo escribió a la vez
-    storageEtagCache.delete(key);
     return { key, value, shared:true };
   }
 };
@@ -6226,34 +6209,14 @@ document.getElementById('electricoModeCerrados').addEventListener('click', ()=>{
 });
 
 // poll for changes from other users/agents working simultaneously
-// (90s en vez de 30s: en Railway cada sondeo re-descarga la bitácora completa, así que
-// subir el intervalo reduce el consumo de red a un tercio sin notarse en la práctica)
-const POLL_INTERVAL_MS = 90000;
-let pollTimer = null;
-function startPolling(){
-  if(pollTimer) return;
-  pollTimer = setInterval(()=>{
-    if(!isModalOpen && !isInlineEditing && !isCommitting) loadAll(false);
-  }, POLL_INTERVAL_MS);
-}
-function stopPolling(){
-  clearInterval(pollTimer);
-  pollTimer = null;
-}
-startPolling();
+setInterval(()=>{
+  if(!isModalOpen && !isInlineEditing && !isCommitting) loadAll(false);
+}, 30000);
 
 // al volver a esta pestaña/ventana, sincroniza de inmediato en vez de esperar
-// al siguiente ciclo de sondeo (por si el navegador pausó el setInterval en segundo plano).
-// Mientras la pestaña está oculta (otra pestaña, otra app, minimizado) el sondeo se
-// detiene del todo: nadie está mirando esos datos, así que no tiene sentido seguir
-// descargando la bitácora completa cada 90 segundos solo para nadie.
+// al siguiente ciclo de sondeo (por si el navegador pausó el setInterval en segundo plano)
 document.addEventListener('visibilitychange', ()=>{
-  if(document.visibilityState === 'visible'){
-    startPolling();
-    if(!isModalOpen && !isInlineEditing && !isCommitting) loadAll(false);
-  } else {
-    stopPolling();
-  }
+  if(document.visibilityState === 'visible' && !isModalOpen && !isInlineEditing && !isCommitting) loadAll(false);
 });
 window.addEventListener('focus', ()=>{
   if(!isModalOpen && !isInlineEditing && !isCommitting) loadAll(false);
