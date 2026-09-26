@@ -568,55 +568,55 @@
   body.hide-ingresos-extra-cols #casesView table td:nth-child(15),
   body.hide-ingresos-extra-cols #casesView table th:nth-child(16),
   body.hide-ingresos-extra-cols #casesView table td:nth-child(16){ display:none; }
-  #casesView table th:nth-child(18),
-  #casesView table td:nth-child(18){ display:none; }
-  #casesView table th:nth-child(19),
-  #casesView table td:nth-child(19){ display:none; }
-  body.hide-ingresos-extra-cols #casesView table th:nth-child(18),
-  body.hide-ingresos-extra-cols #casesView table td:nth-child(18){ display:table-cell; }
-  body.hide-ingresos-extra-cols #casesView table th:nth-child(19),
-  body.hide-ingresos-extra-cols #casesView table td:nth-child(19){ display:table-cell; }
+  #casesView table th:nth-child(16),
+  #casesView table td:nth-child(16){ display:none; }
+  #casesView table th:nth-child(17),
+  #casesView table td:nth-child(17){ display:none; }
+  body.hide-ingresos-extra-cols #casesView table th:nth-child(16),
+  body.hide-ingresos-extra-cols #casesView table td:nth-child(16){ display:table-cell; }
+  body.hide-ingresos-extra-cols #casesView table th:nth-child(17),
+  body.hide-ingresos-extra-cols #casesView table td:nth-child(17){ display:table-cell; }
   /* Columna "Contacto": es un campo del formulario de Ingreso/TP Change, así que solo
      se muestra en esas dos pestañas (en el resto de pestañas ese campo no aplica). */
-  #casesView table th:nth-child(22),
-  #casesView table td:nth-child(22){ display:none; }
-  body.hide-ingresos-extra-cols #casesView table th:nth-child(22),
-  body.hide-ingresos-extra-cols #casesView table td:nth-child(22){ display:table-cell; }
-  body.hide-tpchange-extra-cols #casesView table th:nth-child(22),
-  body.hide-tpchange-extra-cols #casesView table td:nth-child(22){ display:table-cell; }
-  /* Columnas "Inicio (TP Change)" / "Cierre (TP Change)": solo aplican al formulario de
-     TP Change, así que solo se muestran en esa pestaña. */
-  #casesView table th:nth-child(23),
-  #casesView table td:nth-child(23),
-  #casesView table th:nth-child(24),
-  #casesView table td:nth-child(24){ display:none; }
-  body.hide-tpchange-extra-cols #casesView table th:nth-child(23),
-  body.hide-tpchange-extra-cols #casesView table td:nth-child(23),
-  body.hide-tpchange-extra-cols #casesView table th:nth-child(24),
-  body.hide-tpchange-extra-cols #casesView table td:nth-child(24){ display:table-cell; }
-  /* Columna "Celular": también es un campo del formulario de TP Change, solo se muestra ahí. */
-  #casesView table th:nth-child(25),
-  #casesView table td:nth-child(25){ display:none; }
-  body.hide-tpchange-extra-cols #casesView table th:nth-child(25),
-  body.hide-tpchange-extra-cols #casesView table td:nth-child(25){ display:table-cell; }
-  /* Columna "Fecha y hora de cierre": solo se muestra en la pestaña Cerrados. */
   #casesView table th:nth-child(20),
   #casesView table td:nth-child(20){ display:none; }
-  body.show-cerrado-col #casesView table th:nth-child(20),
-  body.show-cerrado-col #casesView table td:nth-child(20){ display:table-cell; }
+  body.hide-ingresos-extra-cols #casesView table th:nth-child(20),
+  body.hide-ingresos-extra-cols #casesView table td:nth-child(20){ display:table-cell; }
+  body.hide-tpchange-extra-cols #casesView table th:nth-child(20),
+  body.hide-tpchange-extra-cols #casesView table td:nth-child(20){ display:table-cell; }
+  /* Columnas "Inicio (TP Change)" / "Cierre (TP Change)": solo aplican al formulario de
+     TP Change, así que solo se muestran en esa pestaña. */
+  #casesView table th:nth-child(21),
+  #casesView table td:nth-child(21),
+  #casesView table th:nth-child(22),
+  #casesView table td:nth-child(22){ display:none; }
+  body.hide-tpchange-extra-cols #casesView table th:nth-child(21),
+  body.hide-tpchange-extra-cols #casesView table td:nth-child(21),
+  body.hide-tpchange-extra-cols #casesView table th:nth-child(22),
+  body.hide-tpchange-extra-cols #casesView table td:nth-child(22){ display:table-cell; }
+  /* Columna "Celular": también es un campo del formulario de TP Change, solo se muestra ahí. */
+  #casesView table th:nth-child(23),
+  #casesView table td:nth-child(23){ display:none; }
+  body.hide-tpchange-extra-cols #casesView table th:nth-child(23),
+  body.hide-tpchange-extra-cols #casesView table td:nth-child(23){ display:table-cell; }
+  /* Columna "Fecha y hora de cierre": solo se muestra en la pestaña Cerrados. */
+  #casesView table th:nth-child(18),
+  #casesView table td:nth-child(18){ display:none; }
+  body.show-cerrado-col #casesView table th:nth-child(18),
+  body.show-cerrado-col #casesView table td:nth-child(18){ display:table-cell; }
   /* En Ericsson/Huawei las 3 columnas de reporte eléctrico por separado (Reporte,
      Proveedor, Seguimiento) no son necesarias: se ocultan y en su lugar se muestra
      una sola columna con las tres concatenadas en un texto listo para copiar. */
+  body.show-reporte-resumen #casesView table th:nth-child(12),
+  body.show-reporte-resumen #casesView table td:nth-child(12),
+  body.show-reporte-resumen #casesView table th:nth-child(13),
+  body.show-reporte-resumen #casesView table td:nth-child(13),
   body.show-reporte-resumen #casesView table th:nth-child(14),
-  body.show-reporte-resumen #casesView table td:nth-child(14),
-  body.show-reporte-resumen #casesView table th:nth-child(15),
-  body.show-reporte-resumen #casesView table td:nth-child(15),
-  body.show-reporte-resumen #casesView table th:nth-child(16),
-  body.show-reporte-resumen #casesView table td:nth-child(16){ display:none; }
-  #casesView table th:nth-child(21),
-  #casesView table td:nth-child(21){ display:none; }
-  body.show-reporte-resumen #casesView table th:nth-child(21),
-  body.show-reporte-resumen #casesView table td:nth-child(21){ display:table-cell; }
+  body.show-reporte-resumen #casesView table td:nth-child(14){ display:none; }
+  #casesView table th:nth-child(19),
+  #casesView table td:nth-child(19){ display:none; }
+  body.show-reporte-resumen #casesView table th:nth-child(19),
+  body.show-reporte-resumen #casesView table td:nth-child(19){ display:table-cell; }
   /* En la pestaña TP Change, Baterías y Generador no aportan (todas las filas son del
      mismo tipo de caso), así que se ocultan ahí. "Proceso" sí es un campo del formulario
      de TP Change (Sin/Con afectación), así que esa columna se conserva visible. Las 4
