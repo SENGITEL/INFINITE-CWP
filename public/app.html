@@ -2237,6 +2237,7 @@ function switchTab(tab){
   document.body.classList.toggle('show-cerrado-col', tab === 'CERRADOS');
   document.body.classList.toggle('show-reporte-resumen', tab === 'ERICSSON' || tab === 'HUAWEI');
   document.body.classList.toggle('hide-tpchange-extra-cols', tab === 'TPCHANGE');
+  if(reapplyCasesTableWidths) reapplyCasesTableWidths();
   render();
 }
 
@@ -6356,12 +6357,32 @@ document.addEventListener('contextmenu', (e)=>{
    Además, cada tabla arranca SIEMPRE con un ancho fijo por columna (estos valores por
    defecto), en vez de dejar que el navegador calcule el ancho según el contenido: así
    una celda con mucho texto (observación, seguimiento, etc.) no "empuja" ni corre las
-   columnas vecinas — el texto simplemente pasa a varias líneas dentro de su columna. */
+   columnas vecinas — el texto simplemente pasa a varias líneas dentro de su columna.
+
+   #casesTable es UNA sola tabla física compartida por las pestañas Ericsson, Huawei,
+   Ingresos, Cerrados y TP Change (cada pestaña solo oculta/muestra columnas por CSS).
+   Como cada pestaña deja visible un juego distinto de columnas, guardar un solo ancho
+   por columna para las 23 hacía que ajustar una columna en Ericsson/Huawei desacomodara
+   Ingresos/Cerrados/TP Change (quedaban columnas visibles ahí con anchos pensados para
+   columnas que en esa pestaña ni se ven). Por eso el ancho de #casesTable se guarda por
+   GRUPO de pestaña, y se vuelve a aplicar cada vez que se cambia de pestaña. */
 const DEFAULT_COL_WIDTHS = {
   casesTable: [110,90,150,130,110,100,160,130,220,60,70,130,100,200,90,140,100,150,160,130,130,130,110],
   electricoTable: [90,90,110,130,100,100,100,160,130,130,110,120,180,100,90,180,130,130,120,50],
   sitesTable: [90,160,60,200,90,90,100,90,110,110,130,100,110,110,50]
 };
+
+// A qué "grupo" de ancho de columnas pertenece la pestaña activa (ver comentario arriba).
+function casesTableGroupKey(){
+  if(activeTab === 'INGRESOS') return 'ingresos';
+  if(activeTab === 'CERRADOS') return 'cerrados';
+  if(activeTab === 'TPCHANGE') return 'tpchange';
+  return 'ericsson-huawei'; // ERICSSON y HUAWEI muestran las mismas columnas, comparten ancho
+}
+
+// Se asigna en makeTableResizable() la primera vez que se prepara #casesTable; switchTab()
+// la llama cada vez que cambia de pestaña para volver a aplicar el ancho del grupo correcto.
+let reapplyCasesTableWidths = null;
 
 async function saveColumnWidths(tableKey, widths){
   try{ await window.storage.set(`col-widths:${tableKey}`, JSON.stringify(widths), false); }
@@ -6379,23 +6400,33 @@ async function loadColumnWidths(tableKey){
 async function makeTableResizable(table){
   if(!table || table.dataset.resizableInit) return;
   table.dataset.resizableInit = '1';
-  const tableKey = table.id;
+  const isCasesTable = table.id === 'casesTable';
+  // Para #casesTable la "clave" de almacenamiento depende de la pestaña activa en el
+  // momento de aplicar/guardar; para las demás tablas (propias de una sola vista) sigue
+  // siendo fija, como antes.
+  const currentTableKey = ()=> isCasesTable ? `casesTable:${casesTableGroupKey()}` : table.id;
   const ths = Array.from(table.querySelectorAll('thead th'));
   if(ths.length === 0) return;
+  const defaults = DEFAULT_COL_WIDTHS[table.id] || null;
+
+  // Carga (o recarga, al cambiar de pestaña) los anchos guardados del grupo que le
+  // corresponde a la pestaña activa en este momento, y si no hay nada guardado, aplica
+  // el ancho por defecto de la tabla.
+  async function applyWidthsForCurrentTab(){
+    const tableKey = currentTableKey();
+    const saved = tableKey ? await loadColumnWidths(tableKey) : null;
+    const widthsToApply = (saved && saved.length === ths.length) ? saved
+      : (defaults && defaults.length === ths.length) ? defaults
+      : null;
+    if(widthsToApply){
+      table.classList.add('col-resizable');
+      ths.forEach((th,i)=>{ if(widthsToApply[i]) th.style.width = widthsToApply[i] + 'px'; });
+    }
+  }
 
   // anchos guardados de una sesión anterior (si el gestor ya movió alguna columna a mano)
-  const saved = tableKey ? await loadColumnWidths(tableKey) : null;
-  const defaults = tableKey ? DEFAULT_COL_WIDTHS[tableKey] : null;
-  const widthsToApply = (saved && saved.length === ths.length) ? saved
-    : (defaults && defaults.length === ths.length) ? defaults
-    : null;
-
-  // layout fijo desde el inicio: cada columna respeta su ancho asignado (guardado o por
-  // defecto) sin importar cuánto texto tenga una celda.
-  if(widthsToApply){
-    table.classList.add('col-resizable');
-    ths.forEach((th,i)=>{ if(widthsToApply[i]) th.style.width = widthsToApply[i] + 'px'; });
-  }
+  await applyWidthsForCurrentTab();
+  if(isCasesTable) reapplyCasesTableWidths = applyWidthsForCurrentTab;
 
   ths.forEach((th, idx)=>{
     const resizer = document.createElement('span');
@@ -6427,6 +6458,9 @@ async function makeTableResizable(table){
         resizer.classList.remove('resizing');
         document.body.style.cursor = '';
         document.body.style.userSelect = '';
+        // se guarda bajo la clave del grupo que estaba activo AL SOLTAR el arrastre,
+        // para no mezclar el ancho de un grupo con el de otro.
+        const tableKey = currentTableKey();
         if(tableKey){
           const widths = ths.map(t=> Math.round(t.getBoundingClientRect().width));
           saveColumnWidths(tableKey, widths);
