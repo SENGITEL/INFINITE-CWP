@@ -5,8 +5,11 @@ import { createHash } from "crypto";
 // Huella del contenido guardado: si el valor no cambió, la huella tampoco.
 // Se usa como ETag para que el cliente pueda preguntar "¿sigue siendo esta?"
 // en vez de tener que volver a descargar el bloque completo cada vez.
-function computeEtag(value: string) {
-  return '"' + createHash("sha1").update(value).digest("hex") + '"';
+// "value" en la base es de tipo Json (puede llegar como string, objeto o null),
+// así que se normaliza a texto antes de hashear.
+function computeEtag(value: unknown) {
+  const str = typeof value === "string" ? value : JSON.stringify(value ?? null);
+  return '"' + createHash("sha1").update(str).digest("hex") + '"';
 }
 
 // GET /api/storage/[key] -> { value } si existe, 404 si no existe.
