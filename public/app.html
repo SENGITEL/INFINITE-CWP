@@ -2207,6 +2207,13 @@ function lookupSiteByName(name){
   return sites.find(s => (s.siteName||'').trim().toLowerCase() === q) || null;
 }
 
+// Etiqueta para mostrar un Service ID relacionado en "Concentra a:": si el sitio está
+// en la base de sitios, se muestra junto a su nombre; si no, solo el Service ID.
+function dependenciaChipLabel(sid){
+  const site = lookupSiteById(sid);
+  return site && site.siteName ? `${sid} - ${site.siteName}` : sid;
+}
+
 // Busca si existe un registro de INGRESO activo (aún sin salida registrada) para un Service ID,
 // para avisar al agente que ya hay alguien gestionando un ingreso en ese sitio/RBS.
 function findIngresoActivoPorServiceId(serviceId, excludeId){
@@ -4463,7 +4470,7 @@ function generateTeamsText(r){
   // respaldo, se agregan al final del resumen para que en Teams quede claro que no es
   // el único sitio afectado.
   if(Array.isArray(r.dependencias) && r.dependencias.length > 0){
-    parts.push(`Dependencias: ${r.dependencias.join(', ')}`);
+    parts.push(`Concentra a: ${r.dependencias.map(dependenciaChipLabel).join(', ')}`);
   }
   return '|' + parts.join('|') + '|';
 }
@@ -4666,14 +4673,14 @@ function openModal(id, readOnly){
           </select>
         </div>
         <div class="full electrico-box" id="dependenciasBox" style="${normalizeProcesoText(r.proceso).includes('culmina respaldo') ? '' : 'opacity:0.45;'}">
-          <label style="margin-bottom:6px; display:block; font-weight:600; font-size:13px;">🔗 Dependencias (otros Service ID en el mismo respaldo)</label>
+          <label style="margin-bottom:6px; display:block; font-weight:600; font-size:13px;">🔗 Concentra a:</label>
           ${readOnly ? '' : `
           <div class="teams-row">
-            <input type="text" id="f_dependenciaInput" class="inline-input" list="siteIdList" placeholder="Service ID dependiente" style="flex:1;" ${normalizeProcesoText(r.proceso).includes('culmina respaldo') ? '' : 'disabled'} />
+            <input type="text" id="f_dependenciaInput" class="inline-input" list="siteIdList" placeholder="Service ID a concentrar" style="flex:1;" ${normalizeProcesoText(r.proceso).includes('culmina respaldo') ? '' : 'disabled'} />
             <button type="button" class="gen-btn" id="f_dependenciaAdd" ${normalizeProcesoText(r.proceso).includes('culmina respaldo') ? '' : 'disabled'}>Agregar</button>
           </div>`}
           <div id="dependenciasList" style="display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;">
-            ${(r.dependencias||[]).map(sid => `<span class="dependencia-chip" data-sid="${escapeHtml(sid)}">${escapeHtml(sid)}${readOnly ? '' : ` <button type="button" class="dep-remove" title="Quitar">×</button>`}</span>`).join('')}
+            ${(r.dependencias||[]).map(sid => `<span class="dependencia-chip" data-sid="${escapeHtml(sid)}">${escapeHtml(dependenciaChipLabel(sid))}${readOnly ? '' : ` <button type="button" class="dep-remove" title="Quitar">×</button>`}</span>`).join('')}
           </div>
           ${readOnly ? '' : `<div class="hint" style="font-size:11px; margin-top:6px;" id="dependenciasHint">${normalizeProcesoText(r.proceso).includes('culmina respaldo') ? 'Agrega los Service ID que comparten este mismo respaldo eléctrico.' : 'Disponible solo cuando el Proceso es "Culmina respaldo, Indisponible".'}</div>`}
         </div>
@@ -5072,7 +5079,7 @@ function openModal(id, readOnly){
   }
   function renderDependenciasChips(){
     dependenciasList.innerHTML = currentDependencias.map(sid =>
-      `<span class="dependencia-chip" data-sid="${escapeHtml(sid)}">${escapeHtml(sid)} <button type="button" class="dep-remove" title="Quitar">×</button></span>`
+      `<span class="dependencia-chip" data-sid="${escapeHtml(sid)}">${escapeHtml(dependenciaChipLabel(sid))} <button type="button" class="dep-remove" title="Quitar">×</button></span>`
     ).join('');
     dependenciasList.querySelectorAll('.dep-remove').forEach(btn=>{
       btn.addEventListener('click', ()=>{
