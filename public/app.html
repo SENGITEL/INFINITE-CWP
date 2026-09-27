@@ -670,6 +670,10 @@
     padding:0 4px; border-radius:50%;
   }
   .dependencia-chip .dep-remove:hover{ color:var(--danger); }
+  .dep-inline{
+    display:block; font-size:10px; color:var(--text-faint); font-weight:400;
+    margin-top:2px; white-space:normal;
+  }
   .inline-input, .inline-select{
     background:var(--panel); border:1px solid var(--line); border-radius:6px;
     padding:6px 8px; color:var(--text); font-family:var(--font-ui); font-size:12px;
@@ -1581,6 +1585,14 @@ function avisoSeguimientoHtml(r){
 function tpChangeBadgeHtml(serviceId){
   if(!serviceId || !sitiosConTpChange.has(serviceId)) return '';
   return `<span class="tp-badge" title="Hay un TP (Change) activo registrado para este sitio">${ROW_ICONS.wrench} TP</span>`;
+}
+// Muestra, debajo del Service ID principal, los Service ID que ese registro "Concentra a"
+// (ver campo dependencias del formulario). Es solo visual: no toca r.serviceId, así que
+// no afecta nada de lo que se agrupa/valida por TK compartido, OTS asociado, exports, etc.
+function dependenciasInlineHtml(dependencias){
+  if(!Array.isArray(dependencias) || dependencias.length === 0) return '';
+  const etiquetas = dependencias.map(sid => escapeHtml(dependenciaChipLabel(sid))).join(', ');
+  return `<span class="dep-inline" title="Concentra a: ${etiquetas}">🔗 ${etiquetas}</span>`;
 }
 // Contenido de la columna "TP Change" de un registro: si el registro tiene su propio
 // tpChange diligenciado, se muestra igual que siempre (ticketCellHtml, con su color
@@ -3167,7 +3179,7 @@ function buildRowHtml(r, extraClass){
         </td>
         <td class="mono">${dash(r.fechaAlarma)}</td>
         <td class="mono">${tpChangeCellHtml(r, sharedTpChangeColors, searchTerm)}</td>
-        <td class="mono">${procesoLedHtml(r.proceso, r.categoria) || ''}<span class="id-cell" style="font-weight:600;" data-id-menu="${r.id}" title="Clic para cambiar el estado eléctrico del sitio">${dashHl(r.serviceId, searchTerm)}</span>${(r.estado !== 'TP (CHANGE)' && r.estado !== 'CERRADO') ? tpChangeBadgeHtml(r.serviceId) : ''}</td>
+        <td class="mono">${procesoLedHtml(r.proceso, r.categoria) || ''}<span class="id-cell" style="font-weight:600;" data-id-menu="${r.id}" title="Clic para cambiar el estado eléctrico del sitio">${dashHl(r.serviceId, searchTerm)}</span>${(r.estado !== 'TP (CHANGE)' && r.estado !== 'CERRADO') ? tpChangeBadgeHtml(r.serviceId) : ''}${dependenciasInlineHtml(r.dependencias)}</td>
         <td class="obs-text">${dash(r.nombreSitio)}${(r.estado!=='INGRESO' && r.estado!=='SALIDA') ? ingresoBadgeHtml(r.serviceId) : ''}</td>
         <td>${procesoHtml}</td>
         <td class="obs-text">
