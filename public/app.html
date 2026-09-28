@@ -769,6 +769,18 @@
   .id-color-indisponible{ color:var(--danger); font-weight:800; }
   .id-color-cerrado{ color:var(--seguimiento); }
   .id-color-normalizado{ color:var(--normalizado); }
+  /* Service ID encerrado en una "píldora" redonda con el color del estado de energía
+     (el mismo del punto de Proceso: rojo, naranja, amarillo, marrón, azul, verde). El
+     borde y el fondo tenue se pintan en línea desde JS con ese color; sin estado de
+     energía queda una píldora neutra. */
+  .sid-pill{
+    display:inline-flex; align-items:center; gap:4px; padding:2px 10px; margin:0;
+    border-radius:999px; border:1.5px solid var(--line); font-weight:700; line-height:1.25;
+    white-space:nowrap;
+  }
+  .id-cell.sid-pill{ margin:0; padding:2px 10px; display:inline-flex; }
+  .sid-pill:hover{ filter:brightness(1.18); }
+  .sid-chip.id-cell.sid-pill{ border-radius:999px; padding:2px 10px; }
   .id-status-menu{
     position:fixed; z-index:500; background:var(--panel); border:1px solid var(--line);
     border-radius:8px; padding:4px; box-shadow:0 8px 24px rgba(0,0,0,.35);
@@ -1078,24 +1090,6 @@
   .toast.toast-error{ border-color:rgba(255,77,109,0.4); color:var(--danger); background:var(--danger-bg); box-shadow:0 8px 24px -6px rgba(255,77,109,0.25); }
   .toast.toast-info{ border-color:var(--line); color:var(--text); }
 
-  /* Aviso de solicitud (reporte eléctrico / seguimiento): a propósito NO comparte la
-     posición del toast normal (centrado abajo) para que no pase inadvertido ni tape lo
-     que la persona esté mirando en el centro de la pantalla — aparece arriba a la derecha,
-     se queda un poco más de tiempo y trae su propia animación de entrada. */
-  .request-toast{
-    position:fixed; top:20px; right:20px; max-width:320px;
-    background:var(--panel-2); border:1px solid var(--seguimiento); color:var(--text);
-    padding:13px 16px; border-radius:10px; font-family:var(--font-ui); font-size:13px;
-    line-height:1.4; z-index:210; opacity:0; pointer-events:none;
-    box-shadow: 0 10px 28px -6px rgba(0,0,0,0.5);
-    display:flex; align-items:flex-start; gap:10px;
-    transform:translateX(16px);
-    transition:opacity .22s ease, transform .22s ease;
-  }
-  .request-toast.show{ opacity:1; transform:translateX(0); pointer-events:auto; }
-  .request-toast .request-toast-icon{ font-size:18px; line-height:1; flex-shrink:0; }
-  .request-toast .request-toast-title{ font-weight:700; margin-bottom:2px; color:var(--seguimiento); }
-  .request-toast .request-toast-body{ color:var(--text-dim); font-size:12px; }
 
   /* Aviso FIJO de la hoja "Reportes Eléctricos" (no se autooculta con un timer): vive
      dentro de esa misma pestaña, así que solo se ve ahí. Se recalcula en cada render()
@@ -1364,7 +1358,6 @@
 <datalist id="siteIdList"></datalist>
 
 <div class="toast" id="toast"></div>
-<div class="request-toast" id="requestToast"></div>
 
 <script>
 /* ---------------- ALMACENAMIENTO REAL EN SERVIDOR LOCAL ----------------
@@ -1551,6 +1544,20 @@ function getProcesoLed(proceso, categoria){
   let rule = PROCESO_LED_RULES.find(r => r.test(proceso));
   if(!rule && categoria) rule = PROCESO_LED_RULES.find(r => r.test(categoria));
   return rule ? rule.color : null;
+}
+// Atributos class/style para encerrar un Service ID en una píldora del color de su estado
+// de energía (mismo color que el punto de Proceso). Sin estado de energía, píldora neutra.
+function hexToRgba(hex, a){
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex || '');
+  if(!m) return 'transparent';
+  const n = parseInt(m[1], 16);
+  return `rgba(${(n>>16)&255},${(n>>8)&255},${n&255},${a})`;
+}
+function sidPillAttrs(proceso, categoria, extraClass){
+  const color = getProcesoLed(proceso, categoria);
+  const cls = 'sid-pill' + (extraClass ? ' ' + extraClass : '');
+  if(!color) return `class="${cls}"`;
+  return `class="${cls}" style="border-color:${color};background:${hexToRgba(color, 0.16)};"`;
 }
 function procesoLedHtml(proceso, categoria){
   const color = getProcesoLed(proceso, categoria);
@@ -1883,22 +1890,7 @@ function showToast(msg, type){
   toastTimer = setTimeout(()=> t.classList.remove('show'), type === 'error' ? 3200 : 1800);
 }
 
-let requestToastTimer = null;
-// Aviso específico para "se solicitó reporte eléctrico" / "se solicitó seguimiento":
-// aparece arriba a la derecha (no en el centro de la pantalla, donde vive el toast
-// normal) y se queda un poco más para que no pase desapercibido.
-function showRequestToast(icon, title, body){
-  const el = document.getElementById('requestToast');
-  el.innerHTML = `<span class="request-toast-icon" aria-hidden="true">${icon}</span>` +
-    `<span><div class="request-toast-title">${escapeHtml(title)}</div>` +
-    (body ? `<div class="request-toast-body">${escapeHtml(body)}</div>` : '') + `</span>`;
-  el.classList.add('show');
-  clearTimeout(requestToastTimer);
-  requestToastTimer = setTimeout(()=> el.classList.remove('show'), 8000);
-}
-
-// Aviso FIJO de la hoja "Reportes Eléctricos": a diferencia de showRequestToast, este no
-// tiene timer — se recalcula en cada render() a partir de los datos reales (reportes sin
+// Aviso FIJO de la hoja "Reportes Eléctricos": no tiene timer — se recalcula en cada render() a partir de los datos reales (reportes sin
 // enviar + seguimientos sin atender) y solo se oculta cuando ese conteo llega a 0, es decir,
 // cuando todos los casos ya fueron enviados o atendidos. Vive dentro de #electricoView,
 // así que naturalmente solo se ve en la pestaña de Reportes Eléctricos.
@@ -3187,7 +3179,7 @@ function buildRowHtml(r, extraClass){
         </td>
         <td class="mono">${dash(r.fechaAlarma)}</td>
         <td class="mono">${tpChangeCellHtml(r, sharedTpChangeColors, searchTerm)}</td>
-        <td class="mono">${procesoLedHtml(r.proceso, r.categoria) || ''}<span class="id-cell" style="font-weight:600;" data-id-menu="${r.id}" title="Clic para cambiar el estado eléctrico del sitio">${dashHl(r.serviceId, searchTerm)}</span>${(r.estado !== 'TP (CHANGE)' && r.estado !== 'CERRADO') ? tpChangeBadgeHtml(r.serviceId) : ''}${dependenciasInlineHtml(r.dependencias)}</td>
+        <td class="mono"><span ${sidPillAttrs(r.proceso, r.categoria, 'id-cell')} data-id-menu="${r.id}" title="${r.proceso ? escapeHtml(r.proceso) + ' — ' : ''}Clic para cambiar el estado eléctrico del sitio">${dashHl(r.serviceId, searchTerm)}</span>${(r.estado !== 'TP (CHANGE)' && r.estado !== 'CERRADO') ? tpChangeBadgeHtml(r.serviceId) : ''}${dependenciasInlineHtml(r.dependencias)}</td>
         <td class="obs-text">${dash(r.nombreSitio)}${(r.estado!=='INGRESO' && r.estado!=='SALIDA') ? ingresoBadgeHtml(r.serviceId) : ''}</td>
         <td>${procesoHtml}</td>
         <td class="obs-text">
@@ -3242,7 +3234,7 @@ function buildRowHtml(r, extraClass){
       const tieneIngreso = sitiosConIngreso.has(x.serviceId);
       const tieneTp = sitiosConTpChange.has(x.serviceId);
       const tip = [x.nombreSitio, x.categoria].filter(Boolean).concat(tieneIngreso ? ['⚠ Ingreso activo en este sitio'] : []).concat(tieneTp ? ['🔧 TP (Change) activo en este sitio'] : []).join(' · ');
-      return `<span class="sid-chip id-cell" data-id-menu="${x.id}" title="${escapeHtml(tip)} — Clic para cambiar el estado eléctrico">${procesoLedHtml(x.proceso, x.categoria) || ''}${escapeHtml(x.serviceId)}${tieneIngreso ? ` ${ROW_ICONS.person}` : ''}${tieneTp ? ` ${ROW_ICONS.wrench}` : ''}</span>`;
+      return `<span ${sidPillAttrs(x.proceso, x.categoria, 'sid-chip id-cell')} data-id-menu="${x.id}" title="${escapeHtml(tip)} — Clic para cambiar el estado eléctrico">${escapeHtml(x.serviceId)}${tieneIngreso ? ` ${ROW_ICONS.person}` : ''}${tieneTp ? ` ${ROW_ICONS.wrench}` : ''}</span>`;
     }).join('');
     const allTeams = groupRecords.map(x=>x.teams).filter(Boolean).join('\n\n');
     const allTeamsHtml = boldServiceIdsHtml(allTeams, groupRecords.map(x=>x.serviceId));
@@ -3460,7 +3452,6 @@ function buildRowHtml(r, extraClass){
       render();
       await saveRecords();
       showToast(`Nuevo seguimiento solicitado (${rec.seguimientoSolicitadoCount})`);
-      showRequestToast('🔔', 'Seguimiento solicitado', rec.serviceId || '');
     });
   });
   queryAllIn(touchedRows, '[data-escalate]').forEach(btn=>{
@@ -3732,7 +3723,7 @@ function renderElectrico(){
         <td class="mono">${dash(r.fechaAlarma)}</td>
         <td class="mono">${ticketCellHtml(r.otsSev1, sharedOts1ColorsElectrico, electricoSearchTerm)}</td>
         <td class="mono">${ticketCellHtml(r.otsSev2, sharedOts2ColorsElectrico, electricoSearchTerm)}</td>
-        <td class="mono" style="color:var(--text); font-weight:600;">${procesoLedHtml(r.proceso, r.categoria) || ''}${dashHl(r.serviceId, electricoSearchTerm)}</td>
+        <td class="mono" style="color:var(--text); font-weight:600;"><span ${sidPillAttrs(r.proceso, r.categoria)} title="${escapeHtml(r.proceso || r.categoria || '')}">${dashHl(r.serviceId, electricoSearchTerm)}</span></td>
         <td class="obs-text">${dashHl(r.nombreSitio, electricoSearchTerm)}</td>
         <td>${isProcesoCritico(r.proceso) ? `<span class="pill-indisponible">${highlightText(r.proceso, electricoSearchTerm)}</span>` : dashHl(r.proceso, electricoSearchTerm)}</td>
         <td onclick="event.stopPropagation();">
@@ -3842,7 +3833,6 @@ function renderElectrico(){
         render();
         await saveRecords();
         showToast(cb.checked ? 'Aviso de seguimiento atendido' : 'Aviso marcado como pendiente nuevamente');
-        if(cb.checked) showRequestToast('✅', 'Seguimiento atendido', rec.serviceId || '');
       }
     });
   });
@@ -3882,10 +3872,6 @@ function renderElectrico(){
       await commitSilently();
       render();
       showToast('Seguimiento guardado');
-      if(input.value.trim() !== ''){
-        const rec = records.find(x=>x.id === id);
-        showRequestToast('📝', 'Seguimiento diligenciado', (rec ? (rec.serviceId||'') : '') + ' · marcado como enviado');
-      }
     });
     input.addEventListener('blur', async ()=>{
       if(saveTimer) await commitSilently();
@@ -3913,10 +3899,6 @@ function renderElectrico(){
       });
       render();
       showToast('Seguimiento guardado');
-      if(value.trim() !== ''){
-        const rec = records.find(x=>x.id === id);
-        showRequestToast('📝', 'Seguimiento diligenciado', (rec ? (rec.serviceId||'') : '') + ' · marcado como enviado');
-      }
     });
   });
   queryAllIn(touchedRows, '[data-reportetexto]').forEach(input=>{
@@ -5555,11 +5537,6 @@ function openModal(id, readOnly){
       const avisoChange = (!soloChange && groups.some(g => g.categoria === 'CHANGE'))
         ? ' (los de categoría Change quedaron en la pestaña TP Change)' : '';
       showToast(`${totalCreated} registro${totalCreated===1?'':'s'} creado${totalCreated===1?'':'s'}${avisoChange}`);
-      if(sharedReporteElectrico && sharedSeguimientoSolicitado){
-        showRequestToast('⚡🔔', 'Reporte eléctrico y seguimiento solicitados', `${totalCreated} registro${totalCreated===1?'':'s'}`);
-      } else if(sharedReporteElectrico){
-        showRequestToast('⚡', 'Reporte eléctrico solicitado', `${totalCreated} registro${totalCreated===1?'':'s'}`);
-      }
       // la reconciliación con el servidor pasa por debajo, sin bloquear
       commitRecordsChange(list => {
         newRecs.forEach(nr => { if(!list.some(x=>x.id===nr.id)) list.push(nr); });
@@ -5691,13 +5668,6 @@ function openModal(id, readOnly){
     else if(updated.estado === 'TP (CHANGE)') tpChangeViewMode = 'activos';
     switchTab(openedFromTab === 'ELECTRICO' ? 'ELECTRICO' : (cerroSiendoTpChange ? 'TPCHANGE' : (updated.estado === 'CERRADO' ? 'CERRADOS' : ((updated.estado === 'INGRESO' || updated.estado === 'SALIDA') ? 'INGRESOS' : (updated.estado === 'TP (CHANGE)' ? 'TPCHANGE' : (gestor === 'HUAWEI' ? 'HUAWEI' : 'ERICSSON'))))));
     showToast(editingId ? 'Cambios guardados' : 'Registro creado');
-    if(isNewReporteRequest && isNewSeguimientoRequest){
-      showRequestToast('⚡🔔', 'Reporte eléctrico y seguimiento solicitados', updated.serviceId || '');
-    } else if(isNewReporteRequest){
-      showRequestToast('⚡', 'Reporte eléctrico solicitado', updated.serviceId || '');
-    } else if(isNewSeguimientoRequest){
-      showRequestToast('🔔', 'Seguimiento solicitado', updated.serviceId || '');
-    }
     if(updated.estado === 'CERRADO' && r.estado === 'TP (CHANGE)'){
       avisarOtsAsociadosSiAplica({ ...updated, estado: 'TP (CHANGE)' });
     }
