@@ -256,15 +256,33 @@
     .kpi-bar{ grid-template-columns:repeat(2, 1fr); }
   }
 
-  /* tabs */
-  .tabs{ display:flex; gap:5px; margin-bottom:0; }
+  /* tabs: arriba, pegadas a la tabla, en la misma fila. La hoja activa se ve completa; las
+     demás quedan escondidas detrás de la tabla, reducidas a una línea de color, y suben
+     al pasar el mouse. */
+  .tabs{ display:flex; align-items:flex-start; gap:5px; height:40px; padding-left:14px; }
   .tab{
+    --tab-color:var(--accent);
     font-family: var(--font-mono); font-weight:700; font-size:12.5px; letter-spacing:0.3px;
-    padding:12px 22px; border-radius:10px 10px 0 0; background:var(--panel-2);
-    color:var(--text-dim); border:1px solid var(--line); border-bottom:none;
-    display:flex; align-items:center; gap:8px; transition:.14s ease; position:relative; top:1px;
+    height:40px; box-sizing:border-box; padding:0 22px; border-radius:10px 10px 0 0;
+    background:var(--panel-2); color:var(--text-dim);
+    border:1px solid var(--line); border-top:3px solid var(--tab-color); border-bottom:none;
+    display:flex; align-items:center; gap:8px; white-space:nowrap;
+    position:relative; z-index:1;
+    transform:translateY(32px); /* baja detrás de la tabla: solo queda visible la línea de arriba */
+    transition:transform .18s ease, color .14s ease, background .14s ease;
   }
-  .tab:hover{ color:var(--text); background:var(--panel-3); }
+  .tab[data-tab="ERICSSON"]{ --tab-color:var(--ericsson); }
+  .tab[data-tab="HUAWEI"]{ --tab-color:var(--huawei); }
+  .tab[data-tab="INGRESOS"]{ --tab-color:var(--blue); }
+  .tab[data-tab="CERRADOS"]{ --tab-color:#c9d3e3; }
+  .tab[data-tab="TPCHANGE"]{ --tab-color:#ff9f45; }
+  .tab[data-tab="ELECTRICO"]{ --tab-color:var(--warn); }
+  .tab[data-tab="SITES"]{ --tab-color:var(--accent); }
+  /* solo la pestaña bajo el mouse sube; las demás se quedan abajo */
+  .tab:hover{ transform:translateY(1px); z-index:3; color:var(--text); background:var(--panel-3); }
+  .tab.active{ transform:translateY(1px); z-index:3; }
+  /* pantallas táctiles (sin hover): todas visibles */
+  @media (hover:none){ .tab{ transform:translateY(1px); } }
   .tab .count{
     font-size:10px; font-weight:800; background:rgba(255,255,255,0.1); padding:2px 7px; border-radius:10px;
   }
@@ -280,13 +298,13 @@
   .tab.active[data-tab="TPCHANGE"] .count{ background:rgba(0,0,0,0.15); color:#331700; }
   .tab.active[data-tab="ELECTRICO"]{ background:var(--warn); color:#332600; border-color:var(--warn); box-shadow:0 -2px 12px -4px rgba(255,201,61,0.5); }
   .tab.active[data-tab="ELECTRICO"] .count{ background:rgba(0,0,0,0.15); color:#332600; }
-  .tab.active[data-tab="SITES"]{ background:var(--panel); color:var(--accent); border-bottom:2px solid var(--accent); margin-bottom:-1px; box-shadow:0 -2px 12px -4px var(--accent-glow); }
+  .tab.active[data-tab="SITES"]{ background:var(--panel); color:var(--accent); border-color:var(--accent); box-shadow:0 -2px 12px -4px var(--accent-glow); }
 
   .tab-panel{
     background:var(--panel); border:1px solid var(--line); border-radius:0 12px 12px 12px;
     padding:18px; margin-bottom:0; box-shadow: var(--shadow-panel);
+    position:relative; z-index:2;
   }
-  .tabs + .tab-panel{ border-top-left-radius:12px; }
 
   /* filters row */
   .filters{
@@ -5688,6 +5706,11 @@ function openModal(id, readOnly){
       }
     }
     const updated = {
+      // Parte del registro original para NO perder campos que el formulario no edita
+      // (masivoGroupId, otsSev2Cerrado, tpChangeRecord, etc.). Sin esto, al guardar un
+      // registro de una masiva (p. ej. al solicitar reporte eléctrico o seguimiento)
+      // quedaba fuera de su lote y se mostraba en una fila aparte.
+      ...r,
       id: r.id,
       gestor: gestor,
       estado: nuevoEstado,
