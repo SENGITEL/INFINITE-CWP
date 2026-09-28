@@ -1545,7 +1545,7 @@ const PROCESO_LED_RULES = [
 ];
 // En los registros MASIVO normalmente no se llena el campo "Proceso" (queda
 // implícito en el botón rápido que se activó al crearlo: En Baterías, En
-// Generador, Caída Directa o Change, guardado en r.categoria), así que si el
+// Generador, Caída Directa o Degradación, guardado en r.categoria), así que si el
 // proceso no matchea ninguna regla, se intenta de nuevo con la categoría.
 function getProcesoLed(proceso, categoria){
   let rule = PROCESO_LED_RULES.find(r => r.test(proceso));
@@ -1769,6 +1769,14 @@ function getMasivoGroupKey(r){
     // Compatibilidad con registros masivos creados antes de existir masivoGroupId:
     // se agrupan por los campos que se comparten al crear el lote.
     return ['legacy', r.categoria, r.otsSev1, r.fechaAlarma, r.proceso, r.observacion, r.estado, r.otsSev2, r.tpChange].join('|');
+  }
+  // Registros creados uno por uno (tipo Único) que comparten el mismo OTS Sev 3 (o, si no
+  // lo tienen, el mismo OTS Sev 4) también se contraen en una sola fila. La clave incluye
+  // gestor y estado para que el grupo nunca mezcle registros de otra pestaña o ya cerrados
+  // (los handlers de grupo actúan sobre TODOS los registros con la misma clave).
+  if(r.estado !== 'INGRESO' && r.estado !== 'SALIDA'){
+    const ots = (r.otsSev1||'').trim() || (r.otsSev2||'').trim();
+    if(ots) return ['ots', r.gestor||'', r.estado||'', ots.toLowerCase()].join(':');
   }
   return null;
 }
@@ -3243,7 +3251,7 @@ function buildRowHtml(r, extraClass){
     const tkExtra = tkSharing.length - groupRecords.length; // cuántos vienen de FUERA de este envío masivo
     const esLoteMasivo = groupRecords.every(x => x.tipoProceso === 'MASIVO');
     return `
-      <tr class="est-${cls} masivo-group-row" data-group="${groupKey}" title="${esLoteMasivo ? 'Doble clic para editar todo el lote (agregar sitios, cambiar OTS/TP, etc.)' : 'Doble clic para ver/editar cada Service ID de este TP Change'}">
+      <tr class="est-${cls} masivo-group-row" data-group="${groupKey}" title="${esLoteMasivo ? 'Doble clic para editar todo el lote (agregar sitios, cambiar OTS/TP, etc.)' : 'Doble clic para ver/editar cada Service ID de este grupo (mismo TP Change u OTS)'}">
         <td>
           <div class="estado-cell">
             ${commonEstado ? badgeHtml(commonEstado) : '<span class="masivo-mixed">Varios</span>'}
@@ -3325,7 +3333,7 @@ function buildRowHtml(r, extraClass){
           const tkSharing = closeTkCluster(groupRecords);
           const tkPending = tkSharing.filter(x=>x.estado!=='CERRADO');
           const closeBtnHtml = tkPending.length > 0 ? `<button type="button" class="close-tk-btn" data-close-tk-group="${gkey}" title="Cerrar todos los registros que comparten TK con un solo clic">${ROW_ICONS.check} Cerrar por TK (${tkPending.length})</button>` : '';
-          rowsHtml.push(`<tr class="masivo-collapse-row" data-group="${gkey}"><td colspan="20"><button type="button" class="masivo-toggle-btn" data-toggle-group="${gkey}">▾ Contraer grupo masivo (${groupRecords.length} Service ID)</button>${closeBtnHtml}</td></tr>`);
+          rowsHtml.push(`<tr class="masivo-collapse-row" data-group="${gkey}"><td colspan="20"><button type="button" class="masivo-toggle-btn" data-toggle-group="${gkey}">▾ Contraer grupo (${groupRecords.length} Service ID)</button>${closeBtnHtml}</td></tr>`);
           groupRecords.forEach(gr => rowsHtml.push(buildRowHtml(gr, 'masivo-child')));
         } else {
           rowsHtml.push(buildMasivoGroupRowHtml(gkey, groupRecords));
@@ -4632,7 +4640,7 @@ function openModal(id, readOnly){
             <button type="button" class="masivo-btn" id="f_masivo_baterias">🔋 En Baterías</button>
             <button type="button" class="masivo-btn" id="f_masivo_generador">⚙️ En Generador</button>
             <button type="button" class="masivo-btn" id="f_masivo_caida">⚡ Caída Directa</button>
-            <button type="button" class="masivo-btn" id="f_masivo_change">🔧 Change</button>
+            <button type="button" class="masivo-btn" id="f_masivo_degradacion">📉 Degradación</button>
           </div>
           <div class="masivo-cat-content">
             <div class="masivo-ids" id="masivoIdsBaterias" style="display:none;">
@@ -4650,10 +4658,10 @@ function openModal(id, readOnly){
               <input type="text" id="f_serviceId_caida" list="siteIdList" placeholder="PA213 (o pega varios: BT200, AU101, AU501)" />
               <div id="siteHintCaida"></div>
             </div>
-            <div class="masivo-ids" id="masivoIdsChange" style="display:none;">
-              <label>Service ID — Change</label>
-              <input type="text" id="f_serviceId_change" list="siteIdList" placeholder="PA213 (o pega varios: BT200, AU101, AU501)" />
-              <div id="siteHintChange"></div>
+            <div class="masivo-ids" id="masivoIdsDegradacion" style="display:none;">
+              <label>Service ID — Degradación</label>
+              <input type="text" id="f_serviceId_degradacion" list="siteIdList" placeholder="PA213 (o pega varios: BT200, AU101, AU501)" />
+              <div id="siteHintDegradacion"></div>
             </div>
           </div>
         </div>
@@ -4797,7 +4805,7 @@ function openModal(id, readOnly){
     if(r.tipoProceso === 'MASIVO' && r.categoria){
       document.getElementById('f_tipo_masivo').classList.add('active-tipo');
       document.getElementById('f_tipo_unico').classList.remove('active-tipo');
-      const catLabelMap = { 'EN BATERIAS':'🔋 En Baterías', 'EN GENERADOR':'⚙️ En Generador', 'CAIDA DIRECTA':'⚡ Caída Directa', 'CHANGE':'🔧 Change' };
+      const catLabelMap = { 'EN BATERIAS':'🔋 En Baterías', 'EN GENERADOR':'⚙️ En Generador', 'CAIDA DIRECTA':'⚡ Caída Directa', 'DEGRADACION':'📉 Degradación', 'CHANGE':'🔧 Change' };
       const catLabel = catLabelMap[r.categoria] || r.categoria;
       document.getElementById('unicoBox').insertAdjacentHTML('beforeend', `<div class="site-name-hint" style="margin-top:8px;">Tipo de masivo: ${escapeHtml(catLabel)}</div>`);
     }
@@ -4859,7 +4867,7 @@ function openModal(id, readOnly){
     { key:'BATERIAS', label:'EN BATERIAS', btnId:'f_masivo_baterias', boxId:'masivoIdsBaterias', inputId:'f_serviceId_baterias', hintId:'siteHintBaterias' },
     { key:'GENERADOR', label:'EN GENERADOR', btnId:'f_masivo_generador', boxId:'masivoIdsGenerador', inputId:'f_serviceId_generador', hintId:'siteHintGenerador' },
     { key:'CAIDA', label:'CAIDA DIRECTA', btnId:'f_masivo_caida', boxId:'masivoIdsCaida', inputId:'f_serviceId_caida', hintId:'siteHintCaida' },
-    { key:'CHANGE', label:'CHANGE', btnId:'f_masivo_change', boxId:'masivoIdsChange', inputId:'f_serviceId_change', hintId:'siteHintChange' }
+    { key:'DEGRADACION', label:'DEGRADACION', btnId:'f_masivo_degradacion', boxId:'masivoIdsDegradacion', inputId:'f_serviceId_degradacion', hintId:'siteHintDegradacion' }
   ];
   MASIVO_CATS.forEach(c=>{
     c.btn = document.getElementById(c.btnId);
@@ -5744,8 +5752,13 @@ function openMasivoGroupModal(groupKey){
     { key:'BATERIAS', label:'EN BATERIAS', title:'🔋 En Baterías' },
     { key:'GENERADOR', label:'EN GENERADOR', title:'⚙️ En Generador' },
     { key:'CAIDA', label:'CAIDA DIRECTA', title:'⚡ Caída Directa' },
-    { key:'CHANGE', label:'CHANGE', title:'🔧 Change' }
+    { key:'DEGRADACION', label:'DEGRADACION', title:'📉 Degradación' }
   ];
+  // Los lotes creados antes de este cambio pueden traer sitios en la categoría "Change":
+  // se sigue mostrando para no perderlos, pero ya no se ofrece en lotes nuevos.
+  if(groupRecords.some(r => r.categoria === 'CHANGE')){
+    GROUP_MASIVO_CATS.push({ key:'CHANGE', label:'CHANGE', title:'🔧 Change' });
+  }
   GROUP_MASIVO_CATS.forEach(c=>{
     c.existingRecords = groupRecords.filter(r => r.categoria === c.label);
     c.existingIds = c.existingRecords.map(r => r.serviceId).filter(Boolean);
