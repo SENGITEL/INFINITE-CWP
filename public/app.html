@@ -364,6 +364,22 @@
     cursor:pointer; font-size:11px; padding:4px 7px; line-height:1;
   }
   .col-filter-clear:hover{ border-color:var(--accent-dim); color:var(--text); }
+  #electricoClearFiltersBtn{ white-space:nowrap; }
+  #electricoClearFiltersBtn:disabled{ opacity:.45; cursor:default; pointer-events:none; }
+
+  /* filtro de columna de opción múltiple (Estado reporte) */
+  .col-multi-btn{ text-align:left; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .col-multi-pop{
+    position:fixed; z-index:9999; min-width:140px; padding:6px;
+    background:var(--panel); border:1px solid var(--accent-dim); border-radius:8px;
+    box-shadow:0 8px 24px -6px rgba(0,0,0,0.5);
+  }
+  .col-multi-pop label{
+    display:flex; align-items:center; gap:8px; padding:5px 8px; border-radius:6px;
+    font-family:var(--font-mono); font-size:11px; color:var(--text); cursor:pointer; user-select:none;
+  }
+  .col-multi-pop label:hover{ background:var(--panel-3); }
+  .col-multi-pop input{ margin:0; cursor:pointer; }
 
   /* handle para ajustar el ancho de las columnas arrastrando el borde derecho */
   table.col-resizable{ table-layout:fixed; }
@@ -1279,6 +1295,7 @@
         <button class="chip" id="electricoModeActivos" data-mode="activos">Activos <span class="count" id="countElectricoActivos" style="margin-left:4px;">0</span></button>
         <button class="chip" id="electricoModeCerrados" data-mode="cerrados">Cerrados <span class="count" id="countElectricoCerrados" style="margin-left:4px;">0</span></button>
         <input class="search" id="electricoSearchInput" placeholder="Buscar por Service ID, observación…" />
+        <button class="btn-ghost" id="electricoClearFiltersBtn" title="Limpiar el buscador y los filtros de columna" disabled>✕ Limpiar filtros</button>
         <button class="btn-ghost" id="electricoExportBtn" style="margin-left:auto;">⬇ Exportar Excel</button>
       </div>
       <div class="table-scroll">
@@ -2370,7 +2387,7 @@ const ELECTRICO_COL_FILTERS = [
   { key:'reporte', type:'text', get: r => r.reporteElectricoTexto || '' },
   { key:'proveedor', type:'select', options:['Ensa','Naturgy','Otro','Sin proveedor'],
     get: r => { const k = effectiveProveedorKey(r); return k === 'ENSA' ? 'Ensa' : k === 'NATURGY' ? 'Naturgy' : k === '' ? 'Sin proveedor' : 'Otro'; } },
-  { key:'estadoReporte', type:'select', options:['Abierto','Descargo','Cerrado','Sin asignar'],
+  { key:'estadoReporte', type:'multiselect', options:['Abierto','Descargo','Cerrado','Sin asignar'],
     get: r => ({ ABIERTO:'Abierto', DESCARGO:'Descargo', CERRADO:'Cerrado' })[r.reporteElectricoEstado] || 'Sin asignar' },
   { key:'seguimiento', type:'text', get: r => r.seguimientoTexto || '' },
   { key:'medidor', type:'text', get: r => (lookupSiteById(r.serviceId)||{}).medidor || '' },
@@ -2393,13 +2410,36 @@ function electricoPassesColFilters(r){
     const f = electricoColFilters[c.key];
     if(!f) continue;
     const v = c.get(r);
-    if(c.type === 'select'){
+    if(c.type === 'multiselect'){
+      if(!f.length) continue;
+      if(!f.includes(v)) return false;
+    } else if(c.type === 'select'){
       if(v !== f) return false;
     } else if(!normFilterText(v).includes(normFilterText(f))){
       return false;
     }
   }
   return true;
+}
+
+// Cierra el desplegable de casillas del filtro de opción múltiple.
+function closeColMultiPop(){
+  document.querySelectorAll('.col-multi-pop').forEach(el => el.remove());
+  document.querySelectorAll('.col-multi-btn').forEach(b => { b.dataset.open = ''; });
+}
+document.addEventListener('click', closeColMultiPop);
+window.addEventListener('resize', closeColMultiPop);
+document.addEventListener('scroll', closeColMultiPop, true);
+document.addEventListener('keydown', (e)=>{ if(e.key === 'Escape') closeColMultiPop(); });
+
+// Deja vacíos todos los controles de la fila de filtros (texto, listas y opción múltiple).
+function resetElectricoColFilterUI(){
+  closeColMultiPop();
+  document.querySelectorAll('#electricoTable tr.filter-row .col-filter').forEach(el=>{
+    if(el._refresh){ el._refresh(); return; }
+    el.value = '';
+    el.classList.remove('has-value');
+  });
 }
 
 function buildElectricoFilterRow(){
@@ -2409,7 +2449,52 @@ function buildElectricoFilterRow(){
   tr.className = 'filter-row';
   ELECTRICO_COL_FILTERS.forEach(c=>{
     const td = document.createElement('td');
-    if(c.key && c.type === 'select'){
+    if(c.key && c.type === 'multiselect'){
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'col-filter col-multi-btn';
+      btn.dataset.colfilter = c.key;
+      btn.title = 'Filtrar esta columna (puedes elegir varias opciones)';
+      const refresh = ()=>{
+        const sel = electricoColFilters[c.key] || [];
+        btn.textContent = sel.length ? sel.join(', ') : 'Todos ▾';
+        btn.classList.toggle('has-value', sel.length > 0);
+      };
+      btn._refresh = refresh;
+      btn.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        const wasOpen = !!document.querySelector('.col-multi-pop');
+        closeColMultiPop();
+        if(wasOpen && btn.dataset.open === '1'){ btn.dataset.open = ''; return; }
+        btn.dataset.open = '1';
+        const pop = document.createElement('div');
+        pop.className = 'col-multi-pop';
+        pop.addEventListener('click', ev => ev.stopPropagation());
+        c.options.forEach(o=>{
+          const lab = document.createElement('label');
+          const cb = document.createElement('input');
+          cb.type = 'checkbox';
+          cb.checked = (electricoColFilters[c.key] || []).includes(o);
+          cb.addEventListener('change', ()=>{
+            const cur = new Set(electricoColFilters[c.key] || []);
+            if(cb.checked) cur.add(o); else cur.delete(o);
+            const arr = c.options.filter(x => cur.has(x));
+            if(arr.length) electricoColFilters[c.key] = arr; else delete electricoColFilters[c.key];
+            refresh();
+            render();
+          });
+          lab.appendChild(cb);
+          lab.appendChild(document.createTextNode(o));
+          pop.appendChild(lab);
+        });
+        document.body.appendChild(pop);
+        const r = btn.getBoundingClientRect();
+        pop.style.left = Math.max(4, Math.min(r.left, window.innerWidth - pop.offsetWidth - 4)) + 'px';
+        pop.style.top = Math.min(r.bottom + 4, window.innerHeight - pop.offsetHeight - 4) + 'px';
+      });
+      refresh();
+      td.appendChild(btn);
+    } else if(c.key && c.type === 'select'){
       const sel = document.createElement('select');
       sel.className = 'col-filter';
       sel.dataset.colfilter = c.key;
@@ -2444,7 +2529,7 @@ function buildElectricoFilterRow(){
       btn.title = 'Limpiar los filtros de columna';
       btn.addEventListener('click', ()=>{
         electricoColFilters = {};
-        tr.querySelectorAll('.col-filter').forEach(el=>{ el.value = ''; el.classList.remove('has-value'); });
+        resetElectricoColFilterUI();
         render();
       });
       td.appendChild(btn);
@@ -3691,6 +3776,7 @@ function renderElectrico(){
   const tbody = document.getElementById('electricoTbody');
   document.getElementById('electricoEmptyState').style.display = list.length === 0 ? 'block' : 'none';
   const hayFiltrosElectrico = electricoSearchTerm.trim() !== '' || Object.keys(electricoColFilters).length > 0;
+  document.getElementById('electricoClearFiltersBtn').disabled = !hayFiltrosElectrico;
   document.getElementById('electricoEmptyState').textContent =
     hayFiltrosElectrico ? 'Ningún reporte eléctrico coincide con los filtros aplicados.'
     : electricoViewMode === 'cerrados' ? 'No hay reportes eléctricos cerrados todavía.'
@@ -6307,6 +6393,13 @@ document.getElementById('siteSearchInput').addEventListener('input', (e)=>{
 });
 document.getElementById('electricoSearchInput').addEventListener('input', (e)=>{
   electricoSearchTerm = e.target.value;
+  render();
+});
+document.getElementById('electricoClearFiltersBtn').addEventListener('click', ()=>{
+  electricoSearchTerm = '';
+  electricoColFilters = {};
+  document.getElementById('electricoSearchInput').value = '';
+  resetElectricoColFilterUI();
   render();
 });
 document.getElementById('electricoModeActivos').addEventListener('click', ()=>{
