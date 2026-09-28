@@ -256,9 +256,9 @@
     .kpi-bar{ grid-template-columns:repeat(2, 1fr); }
   }
 
-  /* tabs: arriba, pegadas a la tabla, en la misma fila. La hoja activa se ve completa; las
-     demás quedan escondidas detrás de la tabla, reducidas a una línea de color, y suben
-     al pasar el mouse. */
+  /* tabs: arriba, pegadas a la tabla, en la misma fila. Todas las pestañas quedan siempre
+     visibles (antes las inactivas se escondían detrás de la tabla y solo subían al pasar
+     el mouse; se quitó ese efecto). */
   .tabs{ display:flex; align-items:flex-start; gap:5px; height:40px; padding-left:14px; }
   .tab{
     --tab-color:var(--accent);
@@ -268,8 +268,8 @@
     border:1px solid var(--line); border-top:3px solid var(--tab-color); border-bottom:none;
     display:flex; align-items:center; gap:8px; white-space:nowrap;
     position:relative; z-index:1;
-    transform:translateY(32px); /* baja detrás de la tabla: solo queda visible la línea de arriba */
-    transition:transform .18s ease, color .14s ease, background .14s ease;
+    transform:translateY(1px);
+    transition:color .14s ease, background .14s ease;
   }
   .tab[data-tab="ERICSSON"]{ --tab-color:var(--ericsson); }
   .tab[data-tab="HUAWEI"]{ --tab-color:var(--huawei); }
@@ -278,11 +278,8 @@
   .tab[data-tab="TPCHANGE"]{ --tab-color:#ff9f45; }
   .tab[data-tab="ELECTRICO"]{ --tab-color:var(--warn); }
   .tab[data-tab="SITES"]{ --tab-color:var(--accent); }
-  /* solo la pestaña bajo el mouse sube; las demás se quedan abajo */
-  .tab:hover{ transform:translateY(1px); z-index:3; color:var(--text); background:var(--panel-3); }
-  .tab.active{ transform:translateY(1px); z-index:3; }
-  /* pantallas táctiles (sin hover): todas visibles */
-  @media (hover:none){ .tab{ transform:translateY(1px); } }
+  .tab:hover{ z-index:3; color:var(--text); background:var(--panel-3); }
+  .tab.active{ z-index:3; }
   .tab .count{
     font-size:10px; font-weight:800; background:rgba(255,255,255,0.1); padding:2px 7px; border-radius:10px;
   }
