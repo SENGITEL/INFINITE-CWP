@@ -1371,6 +1371,9 @@
               <th>Distrito</th>
               <th>Corregimiento</th>
               <th>Proveedor</th>
+              <th>Dependencias</th>
+              <th>Baterías</th>
+              <th>Generador</th>
               <th>Seguridad</th>
               <th>Actualizado</th>
               <th></th>
@@ -1741,6 +1744,7 @@ const SITE_COLUMNS = [
   { key:'distrito',      label:'Distrito',      aliases:['distrito'] },
   { key:'corregimiento', label:'Corregimiento', aliases:['corregimiento'] },
   { key:'proveedor',     label:'Proveedor',     aliases:['proveedor','proovedor'] },
+  { key:'dependencias',  label:'Dependencias',  aliases:['dependencias','depende de','dependesde'] },
   { key:'baterias',      label:'Baterías',      aliases:['baterias'] },
   { key:'generador',     label:'Generador',     aliases:['generador'] },
   { key:'seguridad',     label:'Seguridad',     aliases:['seguridad'] }
@@ -2026,7 +2030,7 @@ function showTableSkeleton(){
     CERRADOS: { tbody:'tbody', empty:'emptyState', cols:25 },
     TPCHANGE: { tbody:'tbody', empty:'emptyState', cols:25 },
     ELECTRICO:{ tbody:'electricoTbody', empty:'electricoEmptyState', cols:22 },
-    SITES:    { tbody:'sitesTbody', empty:'sitesEmptyState', cols:17 }
+    SITES:    { tbody:'sitesTbody', empty:'sitesEmptyState', cols:20 }
   };
   const cfg = map[activeTab] || map.ERICSSON;
   const tbody = document.getElementById(cfg.tbody);
@@ -2663,8 +2667,20 @@ function updateKpis(){
   const ingresoEricsson = records.filter(r => r.estado === 'INGRESO' && (r.gestor||'ERICSSON') === 'ERICSSON').length;
   const ingresoHuawei = records.filter(r => r.estado === 'INGRESO' && r.gestor === 'HUAWEI').length;
 
-  const tpEricsson = records.filter(r => r.estado === 'TP (CHANGE)' && (r.gestor||'ERICSSON') === 'ERICSSON').length;
-  const tpHuawei = records.filter(r => r.estado === 'TP (CHANGE)' && r.gestor === 'HUAWEI').length;
+  // Un TP (Change) masivo crea un registro por Service ID, pero sigue siendo un solo TP
+  // Change (mismo número, mismo trámite). Este KPI debe contar TPs únicos, no registros:
+  // se agrupa con la misma clave que ya usa la tabla para juntarlos en una sola fila
+  // (getMasivoGroupKey → por número de TP Change). Un registro sin ese número (o que no
+  // agrupa con nadie) cuenta por su propio id, como TP individual.
+  const tpGruposEricsson = new Set();
+  const tpGruposHuawei = new Set();
+  records.filter(r => r.estado === 'TP (CHANGE)').forEach(r => {
+    const key = getMasivoGroupKey(r) || r.id;
+    if((r.gestor||'ERICSSON') === 'HUAWEI') tpGruposHuawei.add(key);
+    else tpGruposEricsson.add(key);
+  });
+  const tpEricsson = tpGruposEricsson.size;
+  const tpHuawei = tpGruposHuawei.size;
 
   const seguimientoEricsson = records.filter(r => r.estado === 'SEGUIMIENTO' && (r.gestor||'ERICSSON') === 'ERICSSON').length;
   const seguimientoHuawei = records.filter(r => r.estado === 'SEGUIMIENTO' && r.gestor === 'HUAWEI').length;
@@ -2890,7 +2906,12 @@ function renderInner(){
   const huaweiCount = records.filter(r => r.gestor === 'HUAWEI' && r.estado !== 'CERRADO' && r.estado !== 'INGRESO' && r.estado !== 'SALIDA' && r.estado !== 'TP (CHANGE)').length;
   const ingresosCount = records.filter(r => r.estado === 'INGRESO').length;
   const cerradosCount = records.filter(r => r.estado === 'CERRADO').length;
-  const tpChangeCount = records.filter(r => r.estado === 'TP (CHANGE)').length;
+  // Igual que en el KPI de arriba: un TP (Change) masivo genera un registro por Service ID,
+  // pero sigue siendo un solo TP Change, así que el número de la pestaña cuenta TPs únicos
+  // (agrupados con la misma clave que usa la tabla), no registros/sitios.
+  const tpChangeGrupos = new Set();
+  records.filter(r => r.estado === 'TP (CHANGE)').forEach(r => tpChangeGrupos.add(getMasivoGroupKey(r) || r.id));
+  const tpChangeCount = tpChangeGrupos.size;
   const electricoCount = records.filter(r => r.reporteElectrico && r.estado !== 'CERRADO').length;
   const avisosPendientesCount = records.filter(r => r.seguimientoSolicitado && !r.seguimientoSolicitadoAtendido && r.estado !== 'CERRADO').length;
   const reportesPendientesEnvioCount = records.filter(r => r.reporteElectrico && !r.reporteElectricoEnviado && r.estado !== 'CERRADO').length;
@@ -4104,6 +4125,9 @@ function renderSites(){
       <td>${dash(s.distrito)}</td>
       <td>${dash(s.corregimiento)}</td>
       <td>${dash(s.proveedor)}</td>
+      <td class="obs-text">${dash(s.dependencias)}</td>
+      <td>${dash(s.baterias)}</td>
+      <td>${dash(s.generador)}</td>
       <td>${dash(s.seguridad)}</td>
       <td class="mono">${s.updatedAt ? new Date(s.updatedAt).toLocaleDateString('es-CO') : '—'}</td>
       <td><button class="del-btn" data-delsite="${escapeHtml(s.id)}" title="Eliminar">✕</button></td>
@@ -6120,7 +6144,10 @@ function openSiteModal(id){
     const dupIdx = sites.findIndex(x => x.id !== s.id && (x.siteId||'').trim().toLowerCase() === values.siteId.toLowerCase());
     if(dupIdx >= 0 && !confirm('Ya existe un sitio con ese Id. ¿Sobrescribir su información?')) return;
 
-    const updated = { id: s.id, ...values, updatedAt: Date.now() };
+    // Se parte del sitio existente (s) para conservar campos que ya no están en el
+    // formulario (p. ej. baterías/generador de sitios cargados antes de quitarlos de esta
+    // hoja); solo se pisan los campos que el formulario sí edita.
+    const updated = { ...s, id: s.id, ...values, updatedAt: Date.now() };
     const dupTargetId = dupIdx >= 0 ? sites[dupIdx].id : null;
 
     // se aplica y se ve de inmediato; la relectura/reconciliación con el servidor
