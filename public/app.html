@@ -664,13 +664,11 @@
   body.hide-tpchange-extra-cols #casesView table td:nth-child(15),
   body.hide-tpchange-extra-cols #casesView table th:nth-child(16),
   body.hide-tpchange-extra-cols #casesView table td:nth-child(16){ display:none; }
-  /* En la hoja "Reportes Eléctricos" tampoco son necesarias: se ocultan siempre. */
+  /* En la hoja "Reportes Eléctricos" solo se oculta la columna 9 (Proceso).
+     Las columnas 17 y 18 ahora son "Hora creación" y "Hora seguimiento" y deben verse
+     (antes eran Baterías y Generador, que ya no están en esta tabla). */
   #electricoTable th:nth-child(9),
-  #electricoTable td:nth-child(9),
-  #electricoTable th:nth-child(17),
-  #electricoTable td:nth-child(17),
-  #electricoTable th:nth-child(18),
-  #electricoTable td:nth-child(18){ display:none; }
+  #electricoTable td:nth-child(9){ display:none; }
   .electrico-check{ display:flex; align-items:center; gap:9px; cursor:pointer; user-select:none; }
   .aviso-count-badge{
     display:inline-flex; align-items:center; justify-content:center; min-width:20px; height:20px;
