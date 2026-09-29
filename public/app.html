@@ -1555,6 +1555,12 @@ function isProcesoCritico(proceso){
 function normalizeProcesoText(s){
   return String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
 }
+// El campo "Concentra a" se habilita cuando el Proceso es "Culmina respaldo" (cualquier
+// variante) o cualquier "Caída directa" (con o sin alarmas previas de energía).
+function procesoPermiteConcentrar(proceso){
+  const n = normalizeProcesoText(proceso);
+  return n.includes('culmina respaldo') || n.includes('caida directa');
+}
 // Mapa de color/LED del Proceso: en los registros masivos el proceso ya viene
 // definido y se repite igual en muchas filas, así que en vez de mostrar el
 // texto completo se muestra un punto de color (el texto sigue disponible al
@@ -3417,7 +3423,7 @@ function buildRowHtml(r, extraClass){
         <td class="mono"><span class="empty-dash">—</span></td>
         <td class="obs-text"><span class="empty-dash">—</span></td>
         <td class="obs-text" style="max-width:260px;">
-          ${allTeams ? `<button type="button" class="copy-btn" data-copy="${escapeHtml(allTeams)}" data-copy-html="${allTeamsHtml}" title="Copiar todos">📋 Copiar todos</button>` : '<span class="empty-dash">—</span>'}
+          ${allTeams ? `<div class="copy-cell"><span class="text-flag" title="${escapeHtml(allTeams)}">Texto (${groupRecords.filter(x=>x.teams).length})</span><button type="button" class="copy-btn" data-copy="${escapeHtml(allTeams)}" data-copy-html="${allTeamsHtml}" title="Copiar todos los resúmenes de Teams del grupo">📋</button></div>` : '<span class="empty-dash">—</span>'}
         </td>
         <td><span class="empty-dash">—</span></td>
         <td><span class="empty-dash">—</span></td>
@@ -4797,17 +4803,17 @@ function openModal(id, readOnly){
             ${(r.proceso && !PROCESO_OPTIONS.includes(r.proceso)) ? `<option value="${escapeHtml(r.proceso)}" selected>${escapeHtml(r.proceso)}</option>` : ''}
           </select>
         </div>
-        <div class="full electrico-box" id="dependenciasBox" style="${normalizeProcesoText(r.proceso).includes('culmina respaldo') ? '' : 'opacity:0.45;'}">
+        <div class="full electrico-box" id="dependenciasBox" style="${procesoPermiteConcentrar(r.proceso) ? '' : 'opacity:0.45;'}">
           <label style="margin-bottom:6px; display:block; font-weight:600; font-size:13px;">🔗 Concentra a:</label>
           ${readOnly ? '' : `
           <div class="teams-row">
-            <input type="text" id="f_dependenciaInput" class="inline-input" list="siteIdList" placeholder="Service ID a concentrar" style="flex:1;" ${normalizeProcesoText(r.proceso).includes('culmina respaldo') ? '' : 'disabled'} />
-            <button type="button" class="gen-btn" id="f_dependenciaAdd" ${normalizeProcesoText(r.proceso).includes('culmina respaldo') ? '' : 'disabled'}>Agregar</button>
+            <input type="text" id="f_dependenciaInput" class="inline-input" list="siteIdList" placeholder="Service ID a concentrar" style="flex:1;" ${procesoPermiteConcentrar(r.proceso) ? '' : 'disabled'} />
+            <button type="button" class="gen-btn" id="f_dependenciaAdd" ${procesoPermiteConcentrar(r.proceso) ? '' : 'disabled'}>Agregar</button>
           </div>`}
           <div id="dependenciasList" style="display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;">
             ${(r.dependencias||[]).map(sid => `<span class="dependencia-chip" data-sid="${escapeHtml(sid)}">${escapeHtml(dependenciaChipLabel(sid))}${readOnly ? '' : ` <button type="button" class="dep-remove" title="Quitar">×</button>`}</span>`).join('')}
           </div>
-          ${readOnly ? '' : `<div class="hint" style="font-size:11px; margin-top:6px;" id="dependenciasHint">${normalizeProcesoText(r.proceso).includes('culmina respaldo') ? 'Agrega los Service ID que comparten este mismo respaldo eléctrico.' : 'Disponible solo cuando el Proceso es "Culmina respaldo, Indisponible".'}</div>`}
+          ${readOnly ? '' : `<div class="hint" style="font-size:11px; margin-top:6px;" id="dependenciasHint">${procesoPermiteConcentrar(r.proceso) ? 'Agrega los Service ID que comparten este mismo respaldo eléctrico.' : 'Disponible solo cuando el Proceso es "Culmina respaldo, Indisponible" o "Caída directa".'}</div>`}
         </div>
         <div class="full" id="fieldObservacion">
           <label>Observación</label>
@@ -5191,7 +5197,7 @@ function openModal(id, readOnly){
 
   // ---- Dependencias (otros Service ID en el mismo respaldo eléctrico): la opción de
   // agregar una nueva solo se habilita cuando el Proceso elegido es "Culmina respaldo,
-  // Indisponible" (o cualquier variante que contenga "culmina respaldo"). Los Service ID
+  // Indisponible" (o cualquier variante que contenga "culmina respaldo") o "Caída directa". Los Service ID
   // ya agregados se quedan visibles y se pueden quitar aunque el Proceso cambie después. ----
   let currentDependencias = Array.isArray(r.dependencias) ? r.dependencias.slice() : [];
   const dependenciasBox = document.getElementById('dependenciasBox');
@@ -5200,7 +5206,7 @@ function openModal(id, readOnly){
   const dependenciaAddBtn = document.getElementById('f_dependenciaAdd');
   const dependenciasHint = document.getElementById('dependenciasHint');
   function isCulminaRespaldoActivo(){
-    return normalizeProcesoText(document.getElementById('f_proceso').value).includes('culmina respaldo');
+    return procesoPermiteConcentrar(document.getElementById('f_proceso').value);
   }
   function renderDependenciasChips(){
     dependenciasList.innerHTML = currentDependencias.map(sid =>
@@ -5225,7 +5231,7 @@ function openModal(id, readOnly){
     if(dependenciasHint){
       dependenciasHint.textContent = enabled
         ? 'Agrega los Service ID que comparten este mismo respaldo eléctrico.'
-        : 'Disponible solo cuando el Proceso es "Culmina respaldo, Indisponible".';
+        : 'Disponible solo cuando el Proceso es "Culmina respaldo, Indisponible" o "Caída directa".';
     }
   }
   document.getElementById('f_proceso').addEventListener('change', syncDependenciasAvailability);
