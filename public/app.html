@@ -3403,13 +3403,34 @@ function buildRowHtml(r, extraClass){
     // Observación, Reporte Eléctrico y Seguimiento: igual que Teams, se combinan los mensajes
     // de TODOS los Service ID del lote (no solo el primero), para que un mensaje agregado en
     // cualquier registro del grupo se vea en la fila contraída y no quede oculto.
-    const allObsHtml = groupTextCellHtml(groupUniqueTexts(groupRecords, x=>x.observacion), searchTerm);
-    const allReportesHtml = groupTextCellHtml(groupUniqueTexts(groupRecords, x=>x.reporteElectricoEnviado ? x.reporteElectricoTexto : ''), searchTerm, { copy:true });
+    // Texto expuesto directamente en la fila contraída: SOLO en la pestaña TP Change.
+    // En Ericsson / Huawei (y demás pestañas) se conserva el indicador "Texto" con tooltip.
+    const textoExpuesto = (activeTab === 'TPCHANGE');
+    const allObs = groupRecords.map(x=>x.observacion).filter(v=>v && String(v).trim()!=='');
+    const allObsHtml = textoExpuesto
+      ? groupTextCellHtml(groupUniqueTexts(groupRecords, x=>x.observacion), searchTerm)
+      : (allObs.length===0 ? '<span class="empty-dash">—</span>'
+        : allObs.length===1 ? compactTextHtml(allObs[0], searchTerm)
+        : `<div class="copy-cell"><span class="text-flag" title="${escapeHtml(allObs.join('\n\n'))}">Texto (${allObs.length})</span></div>`);
+    const allReportesTexto = groupRecords.filter(x=>x.reporteElectricoEnviado).map(x=>x.reporteElectricoTexto).filter(v=>v && String(v).trim()!=='');
+    const allReportesHtml = textoExpuesto
+      ? groupTextCellHtml(groupUniqueTexts(groupRecords, x=>x.reporteElectricoEnviado ? x.reporteElectricoTexto : ''), searchTerm, { copy:true })
+      : (allReportesTexto.length===0 ? '<span class="empty-dash">—</span>'
+        : `<div class="copy-cell"><span>${allReportesTexto.length===1 ? escapeHtml(allReportesTexto[0]) : `<span class="text-flag" title="${escapeHtml(allReportesTexto.join('\n\n'))}">Texto (${allReportesTexto.length})</span>`}</span><button type="button" class="copy-btn" data-copy="${escapeHtml(allReportesTexto.join('\n\n'))}" title="Copiar">📋</button></div>`);
     const allProveedores = [...new Set(groupRecords.filter(x=>x.reporteElectricoEnviado).map(x=>proveedorLabelForRecord(x)).filter(Boolean))];
     const allProveedoresHtml = allProveedores.length ? escapeHtml(allProveedores.join(', ')) : '<span class="empty-dash">—</span>';
-    const allSeguimientosHtml = groupTextCellHtml(groupUniqueTexts(groupRecords, x=>x.reporteElectricoEnviado ? x.seguimientoTexto : ''), searchTerm);
-    const allTeamsCellHtml = groupTextCellHtml(groupUniqueTexts(groupRecords, x=>x.teams), searchTerm, { copy:true, copyHtml: t => boldServiceIdsHtml(t, groupRecords.map(x=>x.serviceId)) });
-    const allResumenCellHtml = groupTextCellHtml(groupUniqueTexts(groupRecords, x=>reporteResumenTexto(x)), searchTerm, { copy:true });
+    const allSeguimientos = groupRecords.filter(x=>x.reporteElectricoEnviado).map(x=>x.seguimientoTexto).filter(v=>v && String(v).trim()!=='');
+    const allSeguimientosHtml = textoExpuesto
+      ? groupTextCellHtml(groupUniqueTexts(groupRecords, x=>x.reporteElectricoEnviado ? x.seguimientoTexto : ''), searchTerm)
+      : (allSeguimientos.length===0 ? '<span class="empty-dash">—</span>'
+        : allSeguimientos.length===1 ? compactTextHtml(allSeguimientos[0], searchTerm)
+        : `<span class="text-flag" title="${escapeHtml(allSeguimientos.join('\n\n'))}">Texto (${allSeguimientos.length})</span>`);
+    const allTeamsCellHtml = textoExpuesto
+      ? groupTextCellHtml(groupUniqueTexts(groupRecords, x=>x.teams), searchTerm, { copy:true, copyHtml: t => boldServiceIdsHtml(t, groupRecords.map(x=>x.serviceId)) })
+      : (allTeams ? `<div class="copy-cell"><span class="text-flag" title="${escapeHtml(allTeams)}">Texto (${groupRecords.filter(x=>x.teams).length})</span><button type="button" class="copy-btn" data-copy="${escapeHtml(allTeams)}" data-copy-html="${allTeamsHtml}" title="Copiar todos los resúmenes de Teams del grupo">📋</button></div>` : '<span class="empty-dash">—</span>');
+    const allResumenCellHtml = textoExpuesto
+      ? groupTextCellHtml(groupUniqueTexts(groupRecords, x=>reporteResumenTexto(x)), searchTerm, { copy:true })
+      : (() => { const resumenes = groupRecords.map(x=>reporteResumenTexto(x)).filter(Boolean); if(resumenes.length===0) return '<span class="empty-dash">—</span>'; const texto = resumenes.join('\n\n'); return `<div class="copy-cell"><span class="text-flag" title="${escapeHtml(texto)}">Texto</span><button type="button" class="copy-btn" data-copy="${escapeHtml(texto)}" title="Copiar">📋</button></div>`; })();
     const tkSharing = closeTkCluster(groupRecords);
     const tkPending = tkSharing.filter(x=>x.estado!=='CERRADO');
     const tkExtra = tkSharing.length - groupRecords.length; // cuántos vienen de FUERA de este envío masivo
