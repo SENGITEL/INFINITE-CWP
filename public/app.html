@@ -3474,10 +3474,10 @@ function buildRowHtml(r, extraClass){
         <td><span class="empty-dash">—</span></td>
         <td class="mono">${(()=>{ const closedAts = groupRecords.map(x=>x.cerradoAt).filter(Boolean); return closedAts.length ? formatDateTime(Math.max(...closedAts)) : '<span class="empty-dash">—</span>'; })()}</td>
         <td class="mono">${allResumenCellHtml}</td>
-        <td class="obs-text"><span class="empty-dash">—</span></td>
-        <td class="mono"><span class="empty-dash">—</span></td>
-        <td class="mono"><span class="empty-dash">—</span></td>
-        <td class="mono"><span class="empty-dash">—</span></td>
+        <td class="obs-text">${groupTextCellHtml(groupUniqueTexts(groupRecords, x=>x.contacto), searchTerm)}</td>
+        <td class="mono">${groupTextCellHtml(groupUniqueTexts(groupRecords, x=>x.changeInicio ? formatDatetimeLocalLabel(x.changeInicio) : ''), searchTerm)}</td>
+        <td class="mono">${groupTextCellHtml(groupUniqueTexts(groupRecords, x=>x.changeCierre ? formatDatetimeLocalLabel(x.changeCierre) : ''), searchTerm)}</td>
+        <td class="mono">${groupTextCellHtml(groupUniqueTexts(groupRecords, x=>x.celular), searchTerm)}</td>
       </tr>
     `;
   }
