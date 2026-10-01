@@ -344,7 +344,7 @@
     overflow:auto; max-height:66vh; box-shadow: var(--shadow-card);
   }
   table{ border-collapse:collapse; width:100%; min-width:1300px; font-size:12.5px; }
-  table.sites-table{ min-width:1820px; }
+  table.sites-table{ min-width:2100px; }
   thead th{
     position:sticky; top:0; background:#0a1120; color:var(--text-dim);
     font-family:var(--font-mono); font-weight:700; font-size:10.5px; text-transform:uppercase;
@@ -1386,6 +1386,8 @@
               <th>Baterías</th>
               <th>Generador</th>
               <th>Seguridad</th>
+              <th>Cliente VIP</th>
+              <th>Owner</th>
               <th>Actualizado</th>
               <th></th>
             </tr>
@@ -1764,7 +1766,9 @@ const SITE_COLUMNS = [
   { key:'dependencias',  label:'Dependencias',  aliases:['dependencias','depende de','dependesde'] },
   { key:'baterias',      label:'Baterías',      aliases:['baterias'] },
   { key:'generador',     label:'Generador',     aliases:['generador'] },
-  { key:'seguridad',     label:'Seguridad',     aliases:['seguridad'] }
+  { key:'seguridad',     label:'Seguridad',     aliases:['seguridad'] },
+  { key:'clienteVip',    label:'Cliente VIP',   aliases:['clientevip','clientesvip','cliente','clientes'] },
+  { key:'owner',         label:'Owner',         aliases:['owner','propietario','dueno'] }
 ];
 
 function normalizeHeader(s){
@@ -3354,7 +3358,7 @@ function buildRowHtml(r, extraClass){
             <button type="button" class="obs-edit-btn" data-obs-edit="${r.id}" title="${r.observacion ? 'Ver / editar observación' : 'Agregar observación'}">${r.observacion ? '✎' : '＋'}</button>
           </div>
         </td>
-        <td>${r.vip === 'SI' ? `<span class="vip-si">SÍ</span><button type="button" class="vip-mail-btn" data-vip-mail-ids="${escapeHtml(r.id)}" title="Generar mensaje: Cliente VIP afectado">✉</button>` : '<span class="vip-no">NO</span>'}</td>
+        <td>${r.vip === 'SI' ? `<span class="vip-si">SÍ</span><button type="button" class="vip-mail-btn" data-vip-mail-ids="${escapeHtml(r.id)}" title="Generar mensaje: Cliente VIP afectado${clientesVipDeSitio(r.serviceId).length ? ' — ' + escapeHtml(clientesVipDeSitio(r.serviceId).join(' · ')) : ''}">✉</button>` : '<span class="vip-no">NO</span>'}</td>
         <td>${r.reporteElectrico
           ? `${r.reporteElectricoEnviado ? '<span class="pill-electrico pill-electrico-atendido">✓ Atendido</span>' : '<span class="pill-electrico">⚡ Solicitado</span>'}${avisoSeguimientoHtml(r)}`
           : '<span class="empty-dash">—</span>'}</td>
@@ -3472,7 +3476,7 @@ function buildRowHtml(r, extraClass){
         <td class="obs-text">${siteNames.length ? escapeHtml(siteNames.length > 2 ? `${siteNames.slice(0,2).join(', ')} +${siteNames.length-2}` : siteNames.join(', ')) : '<span class="empty-dash">—</span>'}</td>
         <td>${procesoHtml}</td>
         <td class="obs-text">${allObsHtml}</td>
-        <td>${vipCount>0 ? `<span class="vip-si">SÍ (${vipCount})</span><button type="button" class="vip-mail-btn" data-vip-mail-ids="${escapeHtml(groupRecords.filter(x=>x.vip==='SI').map(x=>x.id).join(','))}" title="Generar mensaje: Cliente VIP afectado">✉</button>` : '<span class="vip-no">NO</span>'}</td>
+        <td>${vipCount>0 ? `<span class="vip-si">SÍ (${vipCount})</span><button type="button" class="vip-mail-btn" data-vip-mail-ids="${escapeHtml(groupRecords.filter(x=>x.vip==='SI').map(x=>x.id).join(','))}" title="Generar mensaje: Cliente VIP afectado${(()=>{ const cl=[...new Set(groupRecords.filter(x=>x.vip==='SI').flatMap(x=>clientesVipDeSitio(x.serviceId)))]; return cl.length ? ' — ' + escapeHtml(cl.join(' · ')) : ''; })()}">✉</button>` : '<span class="vip-no">NO</span>'}</td>
         <td>${(()=>{
           if(elecCount === 0) return '<span class="empty-dash">—</span>';
           const atendidos = groupRecords.filter(x=>x.reporteElectrico && x.reporteElectricoEnviado).length;
@@ -4210,6 +4214,8 @@ function renderSites(){
       <td>${dash(s.baterias)}</td>
       <td>${dash(s.generador)}</td>
       <td>${dash(s.seguridad)}</td>
+      <td class="obs-text">${dash(String(s.clienteVip||'').split('|').map(x=>x.trim()).filter(Boolean).join(' · '))}</td>
+      <td>${dash(s.owner)}</td>
       <td class="mono">${s.updatedAt ? new Date(s.updatedAt).toLocaleDateString('es-CO') : '—'}</td>
       <td><button class="del-btn" data-delsite="${escapeHtml(s.id)}" title="Eliminar">✕</button></td>
     </tr>
@@ -4381,13 +4387,36 @@ function buildShiftSummaryHtml(){
   `;
 }
 
+// Clientes VIP de un sitio (campo "Cliente VIP" de la base de sitios). Los clientes vienen
+// separados por " | " (algunos nombres traen ";" internos, p. ej. "ARGOS PANAMA; S.A.").
+function clientesVipDeSitio(serviceId){
+  const site = lookupSiteById(serviceId);
+  const raw = site ? String(site.clienteVip || '').trim() : '';
+  if(!raw) return [];
+  return raw.split('|').map(x => x.trim()).filter(Boolean);
+}
+
 // Mensaje para enviar por correo cuando hay un cliente VIP afectado: asunto + cuerpo con
-// Service ID, Nombre y OTS (Sev 3 / Sev 4, y TP Change si el registro lo tiene).
+// datos del sitio, clientes VIP, fecha de la alarma, proceso, observación y OTS / TP Change.
 function buildVipMessage(recs){
   const otsLabel = r => [r.otsSev1, r.otsSev2].map(v => String(v||'').trim()).filter(Boolean).join(' / ');
+  const indent = txt => String(txt).trim().split(/\r?\n/).map(l => '   ' + l.trim()).join('\n');
   const bloque = r => {
+    const site = lookupSiteById(r.serviceId);
+    const clientes = clientesVipDeSitio(r.serviceId);
     const lines = [`Service ID: ${r.serviceId || '—'}`];
     if((r.nombreSitio||'').trim()) lines.push(`Nombre: ${r.nombreSitio.trim()}`);
+    if(clientes.length === 1) lines.push(`Cliente VIP: ${clientes[0]}`);
+    else if(clientes.length > 1) lines.push(`Clientes VIP (${clientes.length}):\n` + clientes.map(c => `   • ${c}`).join('\n'));
+    else lines.push('Cliente VIP: No registrado en la base de sitios');
+    const ubic = site ? [site.provincia, site.distrito, site.corregimiento].map(v => String(v||'').trim()).filter(Boolean).join(' / ') : '';
+    if(ubic) lines.push(`Ubicación: ${ubic}`);
+    if((r.fechaAlarma||'').trim()) lines.push(`Fecha de la alarma: ${r.fechaAlarma.trim()}`);
+    if((r.categoria||'').trim()) lines.push(`Categoría: ${r.categoria.trim()}`);
+    lines.push(`Proceso: ${(r.proceso||'').trim() || '—'}`);
+    if((r.estado||'').trim()) lines.push(`Estado: ${r.estado.trim()}`);
+    const obs = (r.observacion||'').trim();
+    lines.push(obs ? `Observación:\n${indent(obs)}` : 'Observación: Sin observaciones registradas');
     lines.push(`OTS Sev 3: ${(r.otsSev1||'').trim() || '—'}`);
     lines.push(`OTS Sev 4: ${(r.otsSev2||'').trim() || '—'}`);
     if((r.tpChange||'').trim()) lines.push(`TP Change: ${r.tpChange.trim()}`);
@@ -4402,7 +4431,11 @@ function buildVipMessage(recs){
     const ids = recs.map(r => r.serviceId).filter(Boolean);
     asunto = `Clientes VIP afectados (${recs.length}) - ${ids.slice(0,5).join(', ')}${ids.length > 5 ? '…' : ''}`;
   }
-  const cuerpo = `${recs.length === 1 ? 'Cliente VIP afectado' : 'Clientes VIP afectados'}\n\n` + recs.map(bloque).join('\n\n');
+  const intro = recs.length === 1
+    ? 'Les informamos que se presenta una afectación en un sitio que presta servicio a clientes VIP. A continuación el detalle:'
+    : `Les informamos que se presenta afectación en ${recs.length} sitios que prestan servicio a clientes VIP. A continuación el detalle:`;
+  const cierre = 'Continuamos con el seguimiento del caso y les mantendremos informados de cualquier novedad.';
+  const cuerpo = `Cordial saludo,\n\n${intro}\n\n` + recs.map(bloque).join('\n\n------------------------------\n\n') + `\n\n${cierre}\n\nSaludos,\nNOC`;
   return { asunto, cuerpo };
 }
 
@@ -4422,7 +4455,7 @@ function openVipMailModal(ids){
       <label>Asunto</label>
       <input type="text" class="vip-mail-field" id="vipMailAsunto" value="${escapeHtml(msg.asunto)}" />
       <label style="margin-top:12px;">Mensaje</label>
-      <textarea class="vip-mail-field" id="vipMailCuerpo" rows="${Math.min(18, 6 + recs.length * 5)}">${escapeHtml(msg.cuerpo)}</textarea>
+      <textarea class="vip-mail-field" id="vipMailCuerpo" rows="${Math.min(24, 14 + recs.length * 6)}">${escapeHtml(msg.cuerpo)}</textarea>
       <div class="modal-actions">
         <div class="vip-mail-actions-left">
           <button type="button" class="btn-ghost" id="vipMailCopyAsunto">Copiar asunto</button>
