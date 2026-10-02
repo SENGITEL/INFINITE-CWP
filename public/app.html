@@ -1132,6 +1132,33 @@
   .toast.toast-error{ border-color:rgba(255,77,109,0.4); color:var(--danger); background:var(--danger-bg); box-shadow:0 8px 24px -6px rgba(255,77,109,0.25); }
   .toast.toast-info{ border-color:var(--line); color:var(--text); }
 
+  /* Alertas de TP Change con el tiempo de cierre cumplido (tarjetas tipo notificación) */
+  #tpAlertStack{
+    position:fixed; top:16px; right:16px; z-index:120;
+    display:flex; flex-direction:column; gap:10px;
+    width:min(370px, calc(100vw - 32px)); pointer-events:none;
+  }
+  .tp-alert{
+    pointer-events:auto; background:var(--panel-2); color:var(--text);
+    border:1px solid rgba(255,77,109,0.45); border-left:4px solid var(--danger);
+    border-radius:10px; padding:12px 14px; font-size:13px;
+    box-shadow:0 12px 32px -8px rgba(0,0,0,0.5);
+    animation: tp-alert-in .25s ease;
+  }
+  @keyframes tp-alert-in{ from{ opacity:0; transform:translateX(24px); } to{ opacity:1; transform:none; } }
+  .tp-alert-head{ display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
+  .tp-alert-title{ font-weight:700; color:var(--danger); line-height:1.3; }
+  .tp-alert-x{ background:none; border:none; color:var(--text-faint); cursor:pointer; font-size:14px; line-height:1; padding:2px 4px; }
+  .tp-alert-x:hover{ color:var(--text); }
+  .tp-alert-body{ margin-top:6px; font-family:var(--font-mono); font-size:12px; word-break:break-word; }
+  .tp-alert-meta{ color:var(--text-faint); }
+  .tp-alert-actions{ display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+  .tp-alert-actions button{
+    font:inherit; font-size:12px; cursor:pointer; padding:5px 10px; border-radius:7px;
+    background:var(--panel-3); color:var(--text); border:1px solid var(--line);
+  }
+  .tp-alert-actions button:hover{ border-color:var(--danger); color:var(--danger); }
+
 
   /* Aviso FIJO de la hoja "Reportes Eléctricos" (no se autooculta con un timer): vive
      dentro de esa misma pestaña, así que solo se ve ahí. Se recalcula en cada render()
@@ -1188,6 +1215,7 @@
         <span class="sep">·</span><span class="updated" id="lastUpdated">—</span>
       </div>
       <button class="btn-ghost" id="refreshBtn" title="Actualizar ahora desde el servidor"><span id="refreshIcon">🔄</span> Actualizar</button>
+      <button class="btn-ghost" id="notifBtn" style="display:none;" title="Permitir que el navegador te avise cuando un TP Change cumpla su hora de cierre">🔔 Activar avisos</button>
       <button class="btn-ghost" id="themeToggleBtn" title="Cambiar entre modo oscuro y claro">🌙 Oscuro</button>
       <button class="btn-ghost" id="exportBtn">⬇ Exportar Excel</button>
       <button class="btn-ghost" id="shiftSummaryBtn">📋 Resumen de turno</button>
@@ -1267,7 +1295,7 @@
     <button class="tab" data-tab="HUAWEI">Huawei <span class="count" id="countHuawei">0</span></button>
     <button class="tab" data-tab="INGRESOS">Ingresos <span class="count" id="countIngresos">0</span></button>
     <button class="tab" data-tab="CERRADOS">Cerrados <span class="count" id="countCerrados">0</span></button>
-    <button class="tab" data-tab="TPCHANGE">TP Change <span class="count" id="countTpChange">0</span></button>
+    <button class="tab" data-tab="TPCHANGE">TP Change <span class="count" id="countTpChange">0</span><span id="tabTpAlertDot" style="display:none; width:8px; height:8px; border-radius:50%; background:var(--danger); margin-left:2px; animation: aviso-pulse 1.6s infinite;"></span></button>
     <button class="tab" data-tab="ELECTRICO">Reportes Eléctricos <span class="count" id="countElectrico">0</span><span id="tabAvisoDot" style="display:none; width:8px; height:8px; border-radius:50%; background:var(--danger); margin-left:2px; animation: aviso-pulse 1.6s infinite;"></span></button>
     <button class="tab" data-tab="SITES">Site ID – Name <span class="count" id="countSites">0</span></button>
   </div>
@@ -1406,6 +1434,7 @@
 <datalist id="siteIdList"></datalist>
 
 <div class="toast" id="toast"></div>
+<div id="tpAlertStack" role="region" aria-live="assertive" aria-label="Alertas de TP Change"></div>
 
 <script>
 /* ---------------- ALMACENAMIENTO REAL EN SERVIDOR LOCAL ----------------
@@ -1779,6 +1808,14 @@ function normalizeHeader(s){
 }
 
 let records = [];
+// --- Alertas de TP Change vencidos (todo se calcula en el navegador, sin peticiones al servidor) ---
+const TP_ALERT_CHECK_MS = 30000;   // cada cuánto se revisa la hora de cierre
+const TP_ALERT_REMIND_MIN = 15;    // mientras siga abierto y vencido, se vuelve a avisar cada X min (0 = avisar solo una vez)
+const TP_ALERT_MAX_CARDS = 3;      // si hay más de estos a la vez, se agrupan en un solo aviso resumen
+const TP_ALERT_STORE_KEY = 'tp-alertas-vistas'; // personal de cada equipo (no se comparte)
+let tpAlertSeen = {};              // "TP|fechaCierre" -> última vez (ms) que se avisó en este equipo
+let tpAlertLoaded = false;
+let tpAudioCtx = null;
 let sites = [];
 let activeTab = "ERICSSON"; // ERICSSON | HUAWEI | SITES
 let activeFilters = new Set();
@@ -2895,7 +2932,7 @@ function render(){
   // reconstruir la tabla, y quedaría "flotando" desconectado de cualquier fila.
   if(escalateMenuEl){ escalateMenuEl.remove(); escalateMenuEl = null; }
   if(idStatusMenuEl){ idStatusMenuEl.remove(); idStatusMenuEl = null; }
-  const paint = ()=>{ renderInner(); restoreScrollState(scrollState); };
+  const paint = ()=>{ renderInner(); restoreScrollState(scrollState); try{ checkTpChangeVencidos(); }catch(e){} };
   if(typeof document.startViewTransition === 'function' && !prefersReducedMotion){
     document.startViewTransition(paint);
   } else {
@@ -3039,7 +3076,11 @@ function renderInner(){
   // para poder cerrar de un solo clic todos los registros que comparten un mismo número de TK.
   const tkClusters = computeTkClusters(records);
 
-  function showEscalateMenu(btn, id){
+  // Un registro se puede escalar si no está cerrado, no es de Ingresos/Salidas y no está ya escalado.
+  function puedeEscalar(r){
+    return ['CERRADO','INGRESO','SALIDA','ESCALADO A IP','ESCALADO A DWDM'].indexOf(r.estado) === -1;
+  }
+  function showEscalateMenu(btn, id, groupKey){
     closeEscalateMenu();
     const rect = btn.getBoundingClientRect();
     const menu = document.createElement('div');
@@ -3054,6 +3095,19 @@ function renderInner(){
     menu.querySelectorAll('[data-esc-opt]').forEach(opt=>{
       opt.addEventListener('click', async (e)=>{
         e.stopPropagation();
+        if(groupKey){
+          // Escalar a la vez todos los registros del lote masivo que aún se pueden escalar
+          const destino = opt.dataset.escOpt;
+          const objetivo = records.filter(r => getMasivoGroupKey(r) === groupKey && puedeEscalar(r));
+          if(objetivo.length){
+            objetivo.forEach(r => { r.estado = destino; });
+            render();
+            await saveRecords();
+            showToast(`${objetivo.length} registro(s) escalado(s) a ${destino === 'ESCALADO A IP' ? 'IP' : 'DWDM'}`);
+          }
+          closeEscalateMenu();
+          return;
+        }
         const rec = records.find(r=>r.id===id);
         if(rec){
           rec.estado = opt.dataset.escOpt;
@@ -3330,6 +3384,7 @@ function buildRowHtml(r, extraClass){
                         : `<button type="button" class="action-btn action-close" data-close="${r.id}" title="Cerrar registro">${ROW_ICONS.check}</button>`)
                     : ''}
                   ${(r.estado !== 'CERRADO' && r.estado !== 'PENDIENTE POR CIERRE') ? `<button type="button" class="action-btn action-pending" data-pending="${r.id}" title="Marcar como pendiente de cierre">${ROW_ICONS.pending}</button>` : ''}
+                  ${r.estado === 'PENDIENTE POR CIERRE' ? `<button type="button" class="action-btn action-reopen" data-unpend="${r.id}" title="Volver a En gestión">${ROW_ICONS.reopen}</button>` : ''}
                 `}
             </div>
           </div>
@@ -3449,8 +3504,11 @@ function buildRowHtml(r, extraClass){
           <div class="estado-cell">
             ${commonEstado ? badgeHtml(commonEstado) : '<span class="masivo-mixed">Varios</span>'}
             <div class="estado-actions">
+              ${groupRecords.some(puedeEscalar) ? `<button type="button" class="action-btn action-escalate" data-escalate-group="${groupKey}" title="Escalar los ${groupRecords.filter(puedeEscalar).length} registro(s) de este lote">${ROW_ICONS.escalate}</button>` : ''}
               ${tkPending.length > 0 ? `<button type="button" class="action-btn action-close" data-close-tk-group="${groupKey}" title="Cerrar los ${tkPending.length} registro(s) pendientes de este lote${tkExtra>0 ? ` (incluye ${tkExtra} que comparten el mismo TK fuera del lote)` : ''}">${ROW_ICONS.check}</button>` : ''}
               ${tkPending.length > 0 ? `<button type="button" class="action-btn action-pending" data-pending-group="${groupKey}" title="Marcar los registros pendientes de este grupo como pendiente de cierre">${ROW_ICONS.pending}</button>` : ''}
+              ${groupRecords.some(x=>x.estado==='CERRADO') ? `<button type="button" class="action-btn action-reopen" data-reopen-group="${groupKey}" title="Reabrir los ${groupRecords.filter(x=>x.estado==='CERRADO').length} registro(s) cerrados de este grupo">${ROW_ICONS.reopen}</button>` : ''}
+              ${groupRecords.some(x=>x.estado==='PENDIENTE POR CIERRE') ? `<button type="button" class="action-btn action-reopen" data-unpend-group="${groupKey}" title="Volver a En gestión los registros pendientes de cierre de este grupo">${ROW_ICONS.reopen}</button>` : ''}
             </div>
           </div>
         </td>
@@ -3645,6 +3703,17 @@ function buildRowHtml(r, extraClass){
       showToast('Registro marcado como pendiente de cierre');
     });
   });
+  queryAllIn(touchedRows, '[data-unpend]').forEach(btn=>{
+    btn.addEventListener('click', async (e)=>{
+      e.stopPropagation();
+      const rec = records.find(r=>r.id===btn.dataset.unpend);
+      if(!rec || rec.estado !== 'PENDIENTE POR CIERRE') return;
+      rec.estado = 'EN GESTION';
+      render();
+      await saveRecords();
+      showToast('Registro devuelto a En gestión');
+    });
+  });
   queryAllIn(touchedRows, '[data-bell]').forEach(btn=>{
     btn.addEventListener('click', async (e)=>{
       e.stopPropagation();
@@ -3823,6 +3892,37 @@ function buildRowHtml(r, extraClass){
       render();
       await saveRecords();
       showToast(`${pendientes.length} registro(s) cerrado(s) por TK compartido${bloqueados.length>0 ? `, ${bloqueados.length} sin cerrar por OTS pendiente` : ''}`);
+    });
+  });
+  queryAllIn(touchedRows, '[data-escalate-group]').forEach(btn=>{
+    btn.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      showEscalateMenu(btn, null, btn.dataset.escalateGroup);
+    });
+  });
+  queryAllIn(touchedRows, '[data-reopen-group]').forEach(btn=>{
+    btn.addEventListener('click', async (e)=>{
+      e.stopPropagation();
+      const gkey = btn.dataset.reopenGroup;
+      const cerrados = records.filter(r => getMasivoGroupKey(r) === gkey && r.estado === 'CERRADO');
+      if(cerrados.length === 0) return;
+      if(!confirm(`¿Reabrir los ${cerrados.length} registro(s) cerrados de este grupo? Pasarán a estado "En gestión".`)) return;
+      cerrados.forEach(r => { r.estado = 'EN GESTION'; r.cerradoAt = null; });
+      render();
+      await saveRecords();
+      showToast(`${cerrados.length} registro(s) reabierto(s)`);
+    });
+  });
+  queryAllIn(touchedRows, '[data-unpend-group]').forEach(btn=>{
+    btn.addEventListener('click', async (e)=>{
+      e.stopPropagation();
+      const gkey = btn.dataset.unpendGroup;
+      const pend = records.filter(r => getMasivoGroupKey(r) === gkey && r.estado === 'PENDIENTE POR CIERRE');
+      if(pend.length === 0) return;
+      pend.forEach(r => { r.estado = 'EN GESTION'; });
+      render();
+      await saveRecords();
+      showToast(`${pend.length} registro(s) devuelto(s) a En gestión`);
     });
   });
   queryAllIn(touchedRows, '[data-pending-group]').forEach(btn=>{
@@ -6642,6 +6742,167 @@ document.getElementById('electricoModeCerrados').addEventListener('click', ()=>{
   electricoViewMode = 'cerrados';
   render();
 });
+
+/* ---------------- ALERTAS DE TP CHANGE CON EL TIEMPO DE CIERRE CUMPLIDO ----------------
+   Cada 30 s (y en cada render) se buscan los TP Change que siguen abiertos y cuya "Fecha y hora
+   de cierre" ya pasó. Por cada uno se muestra una tarjeta tipo notificación (queda fija hasta
+   cerrarla), una notificación del navegador si la persona dio permiso, un pitido corto y un
+   punto rojo en la pestaña TP Change. Mientras siga abierto se recuerda cada TP_ALERT_REMIND_MIN
+   minutos. Un TP masivo (varios Service ID con el mismo número) cuenta como un solo aviso. */
+function tpChangeVencidos(){
+  const now = Date.now();
+  const grupos = new Map();
+  records.forEach(r=>{
+    if(!(r.tpChangeRecord || r.estado === 'TP (CHANGE)')) return;
+    if(r.estado === 'CERRADO' || !r.changeCierre) return;
+    const t = new Date(r.changeCierre).getTime(); // datetime-local sin zona = hora local del equipo
+    if(isNaN(t) || t > now) return;
+    const tp = (r.tpChange || '').trim();
+    const key = (tp ? 'tp:' + tp.toLowerCase() : 'id:' + r.id) + '|' + r.changeCierre;
+    let g = grupos.get(key);
+    if(!g){ g = { key, tpChange: tp, cierre: r.changeCierre, t, ids: [] }; grupos.set(key, g); }
+    if(r.serviceId) g.ids.push(r.serviceId);
+  });
+  return [...grupos.values()];
+}
+
+function tpAlertAgo(t){
+  const min = Math.max(0, Math.round((Date.now() - t) / 60000));
+  if(min < 1) return 'justo ahora';
+  if(min < 60) return `hace ${min} min`;
+  const h = Math.floor(min / 60), m = min % 60;
+  return `hace ${h} h${m ? ' ' + m + ' min' : ''}`;
+}
+
+function irATpChange(){
+  tpChangeViewMode = 'activos';
+  switchTab('TPCHANGE');
+}
+
+function tpAlertBeep(){
+  try{
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if(!AC) return;
+    tpAudioCtx = tpAudioCtx || new AC();
+    if(tpAudioCtx.state === 'suspended') tpAudioCtx.resume();
+    const t0 = tpAudioCtx.currentTime;
+    [0, 0.28].forEach(off=>{
+      const o = tpAudioCtx.createOscillator(), g = tpAudioCtx.createGain();
+      o.type = 'sine'; o.frequency.value = 880;
+      g.gain.setValueAtTime(0.0001, t0 + off);
+      g.gain.exponentialRampToValueAtTime(0.2, t0 + off + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + off + 0.22);
+      o.connect(g); g.connect(tpAudioCtx.destination);
+      o.start(t0 + off); o.stop(t0 + off + 0.24);
+    });
+  }catch(e){ /* sin audio disponible o bloqueado hasta que la persona interactúe: se ignora */ }
+}
+
+function tpAlertSystemNotify(titulo, cuerpo, tag){
+  try{
+    if(!('Notification' in window) || Notification.permission !== 'granted') return;
+    const n = new Notification(titulo, { body: cuerpo, tag: tag, requireInteraction: true });
+    n.onclick = ()=>{ window.focus(); irATpChange(); n.close(); };
+  }catch(e){ /* algunos navegadores móviles no permiten new Notification(): queda la tarjeta dentro de la app */ }
+}
+
+function updateNotifBtn(){
+  const b = document.getElementById('notifBtn');
+  if(!b) return;
+  b.style.display = ('Notification' in window && Notification.permission === 'default') ? '' : 'none';
+}
+
+function requestTpNotifPermission(){
+  if(!('Notification' in window)) return;
+  Notification.requestPermission().then(p=>{
+    updateNotifBtn();
+    document.querySelectorAll('.tp-alert-perm').forEach(x => x.remove());
+    if(p === 'granted') showToast('Avisos del navegador activados');
+  }).catch(()=>{});
+}
+
+function showTpAlert(a){ // a = { key, titulo, cuerpo, meta }
+  const stack = document.getElementById('tpAlertStack');
+  if(!stack) return;
+  [...stack.children].forEach(c => { if(c.dataset.key === a.key) c.remove(); });
+  const el = document.createElement('div');
+  el.className = 'tp-alert';
+  el.dataset.key = a.key;
+  const pedirPermiso = ('Notification' in window && Notification.permission === 'default');
+  el.innerHTML = `
+    <div class="tp-alert-head">
+      <span class="tp-alert-title">⏰ ${escapeHtml(a.titulo)}</span>
+      <button type="button" class="tp-alert-x" aria-label="Cerrar aviso" title="Cerrar aviso">✕</button>
+    </div>
+    <div class="tp-alert-body">${escapeHtml(a.cuerpo)}<br><span class="tp-alert-meta">${escapeHtml(a.meta)}</span></div>
+    <div class="tp-alert-actions">
+      <button type="button" class="tp-alert-go">Ver en TP Change</button>
+      ${pedirPermiso ? '<button type="button" class="tp-alert-perm">Activar avisos del navegador</button>' : ''}
+    </div>`;
+  el.querySelector('.tp-alert-x').addEventListener('click', ()=> el.remove());
+  el.querySelector('.tp-alert-go').addEventListener('click', ()=>{ el.remove(); irATpChange(); });
+  const permBtn = el.querySelector('.tp-alert-perm');
+  if(permBtn) permBtn.addEventListener('click', requestTpNotifPermission);
+  stack.appendChild(el);
+}
+
+async function loadTpAlertSeen(){
+  try{
+    const r = await window.storage.get(TP_ALERT_STORE_KEY, false);
+    tpAlertSeen = JSON.parse(r.value) || {};
+  }catch(e){ tpAlertSeen = {}; }
+  tpAlertLoaded = true;
+}
+function saveTpAlertSeen(){
+  try{ Promise.resolve(window.storage.set(TP_ALERT_STORE_KEY, JSON.stringify(tpAlertSeen), false)).catch(()=>{}); }catch(e){}
+}
+
+function checkTpChangeVencidos(){
+  // no se revisa hasta tener los datos reales del servidor (evita avisar con la lista vacía)
+  if(lastRecordsRaw === null || !tpAlertLoaded) return;
+  const venc = tpChangeVencidos();
+
+  const dot = document.getElementById('tabTpAlertDot');
+  if(dot){
+    dot.style.display = venc.length ? 'inline-block' : 'none';
+    dot.title = venc.length ? `${venc.length} TP Change con el tiempo de cierre cumplido` : '';
+  }
+
+  let dirty = false;
+  const vigentes = new Set(venc.map(g => g.key));
+  Object.keys(tpAlertSeen).forEach(k=>{ if(!vigentes.has(k)){ delete tpAlertSeen[k]; dirty = true; } }); // ya cerrados o con otra fecha
+
+  const now = Date.now();
+  const remindMs = TP_ALERT_REMIND_MIN * 60000;
+  const porAvisar = venc.filter(g => { const last = tpAlertSeen[g.key]; return !last || (remindMs > 0 && now - last >= remindMs); });
+
+  if(porAvisar.length){
+    porAvisar.forEach(g => { tpAlertSeen[g.key] = now; });
+    dirty = true;
+    if(porAvisar.length > TP_ALERT_MAX_CARDS){
+      const titulo = `${porAvisar.length} TP Change con el tiempo de cierre cumplido`;
+      const cuerpo = porAvisar.map(g => g.tpChange ? 'TP ' + g.tpChange : (g.ids[0] || '—')).join(' · ');
+      showTpAlert({ key:'__resumen__', titulo, cuerpo, meta:'Revisa la pestaña TP Change' });
+      tpAlertSystemNotify(titulo, cuerpo, 'tp-resumen');
+    } else {
+      porAvisar.forEach(g=>{
+        const titulo = `${g.tpChange ? 'TP Change ' + g.tpChange : 'TP Change'} · tiempo de cierre cumplido`;
+        const cuerpo = g.ids.length > 4 ? g.ids.slice(0,4).join(', ') + ` +${g.ids.length - 4}` : (g.ids.join(', ') || '—');
+        const meta = `Cierre programado: ${formatDatetimeLocalLabel(g.cierre)} · ${tpAlertAgo(g.t)}`;
+        showTpAlert({ key:g.key, titulo, cuerpo, meta });
+        tpAlertSystemNotify(titulo, `${cuerpo}\n${meta}`, 'tp-' + g.key);
+      });
+    }
+    tpAlertBeep();
+  }
+  if(dirty) saveTpAlertSeen();
+}
+
+updateNotifBtn();
+document.getElementById('notifBtn').addEventListener('click', requestTpNotifPermission);
+loadTpAlertSeen().then(checkTpChangeVencidos);
+setInterval(checkTpChangeVencidos, TP_ALERT_CHECK_MS);
+document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState === 'visible') checkTpChangeVencidos(); });
 
 // poll for changes from other users/agents working simultaneously
 // (90s en vez de 30s: en Railway cada sondeo re-descarga la bitácora completa, así que
