@@ -6135,6 +6135,9 @@ function openMasivoGroupModal(groupKey){
   const first = groupRecords[0];
   const gestor = first.gestor === 'HUAWEI' ? 'HUAWEI' : 'ERICSSON';
   const commonEstado = groupRecords.every(x=>x.estado===first.estado) ? first.estado : '';
+  // Grupo de TP Change: además de los campos de siempre se editan la fecha/hora de inicio y
+  // de cierre del change (y el Teams se genera con el formato |CHANGE|...).
+  const esGrupoChange = String(groupKey).indexOf('tpchange:') === 0;
 
   const GROUP_MASIVO_CATS = [
     { key:'BATERIAS', label:'EN BATERIAS', title:'🔋 En Baterías' },
@@ -6201,6 +6204,16 @@ function openMasivoGroupModal(groupKey){
         <div class="full" style="margin-top:-8px;">
           <span style="font-size:11px; color:var(--text-faint);">⚠ Debe quedar diligenciado al menos uno de estos 3 campos (OTS Sev 3, OTS Sev 4 o TP Change), solo con números.</span>
         </div>
+        ${esGrupoChange ? `
+        <div>
+          <label>Fecha y hora de inicio</label>
+          <input type="datetime-local" id="gm_changeInicio" value="${escapeHtml(first.changeInicio||'')}" />
+        </div>
+        <div>
+          <label>Fecha y hora de cierre</label>
+          <input type="datetime-local" id="gm_changeCierre" value="${escapeHtml(first.changeCierre||'')}" />
+        </div>
+        ` : ''}
         <div class="full">
           <label>Proceso</label>
           <select id="gm_proceso">
@@ -6249,6 +6262,8 @@ function openMasivoGroupModal(groupKey){
     const sharedTpChange = document.getElementById('gm_tpChange').value.trim();
     const sharedProceso = document.getElementById('gm_proceso').value.trim();
     const sharedObservacion = document.getElementById('gm_observacion').value.trim();
+    const sharedChangeInicio = esGrupoChange ? document.getElementById('gm_changeInicio').value : '';
+    const sharedChangeCierre = esGrupoChange ? document.getElementById('gm_changeCierre').value : '';
 
     const tkFields = [
       { label: 'OTS Sev 3', value: sharedOtsSev1, el: document.getElementById('gm_otsSev1') },
@@ -6296,10 +6311,21 @@ function openMasivoGroupModal(groupKey){
       r.tpChange = sharedTpChange;
       r.proceso = sharedProceso;
       r.observacion = sharedObservacion;
-      r.teams = generateTeamsText({
-        otsSev1: sharedOtsSev1, serviceId: r.serviceId, otsSev2: sharedOtsSev2,
-        nombreSitio: r.nombreSitio, categoria: r.categoria, proceso: sharedProceso, observacion: sharedObservacion
-      });
+      if(esGrupoChange){
+        r.changeInicio = sharedChangeInicio;
+        r.changeCierre = sharedChangeCierre;
+        r.teams = generateChangeTeamsText({
+          serviceId: r.serviceId, nombreSitio: r.nombreSitio, tpChange: sharedTpChange,
+          contacto: r.contacto, celular: r.celular,
+          changeInicio: sharedChangeInicio, changeCierre: sharedChangeCierre,
+          proceso: sharedProceso, observacion: sharedObservacion
+        });
+      } else {
+        r.teams = generateTeamsText({
+          otsSev1: sharedOtsSev1, serviceId: r.serviceId, otsSev2: sharedOtsSev2,
+          nombreSitio: r.nombreSitio, categoria: r.categoria, proceso: sharedProceso, observacion: sharedObservacion
+        });
+      }
     });
 
     // Agrega los Service ID nuevos escritos en cada categoría; los que ya existían no se tocan.
@@ -6313,10 +6339,17 @@ function openMasivoGroupModal(groupKey){
         const nombreSitio = site ? (site.siteName||'') : '';
         const vipVal = site ? (normalizeVip(site.vip) || 'NO') : 'NO';
         const seguridadVal = site ? (normalizeVip(site.seguridad) || '') : '';
-        const teamsVal = generateTeamsText({
-          otsSev1: sharedOtsSev1, serviceId: sid, otsSev2: sharedOtsSev2,
-          nombreSitio, categoria: c.label, proceso: sharedProceso, observacion: sharedObservacion
-        });
+        const teamsVal = esGrupoChange
+          ? generateChangeTeamsText({
+              serviceId: sid, nombreSitio, tpChange: sharedTpChange,
+              contacto: first.contacto || '', celular: first.celular || '',
+              changeInicio: sharedChangeInicio, changeCierre: sharedChangeCierre,
+              proceso: sharedProceso, observacion: sharedObservacion
+            })
+          : generateTeamsText({
+              otsSev1: sharedOtsSev1, serviceId: sid, otsSev2: sharedOtsSev2,
+              nombreSitio, categoria: c.label, proceso: sharedProceso, observacion: sharedObservacion
+            });
         const estadoBloqueadoNuevo = sharedEstado === 'CERRADO' && tieneOtsBloqueandoCierre({
           tpChange: sharedTpChange, otsSev1: sharedOtsSev1, otsSev2: sharedOtsSev2,
           otsSev1Cerrado: false, otsSev2Cerrado: false
@@ -6331,6 +6364,8 @@ function openMasivoGroupModal(groupKey){
           otsSev1: sharedOtsSev1, fechaAlarma: sharedFecha, otsSev2: sharedOtsSev2, tpChange: sharedTpChange,
           serviceId: sid, nombreSitio, categoria: c.label, tipoProceso: 'MASIVO', masivoGroupId: effectiveGroupId,
           proceso: sharedProceso, observacion: sharedObservacion,
+          contacto: esGrupoChange ? (first.contacto || '') : '', celular: esGrupoChange ? (first.celular || '') : '', actividad: '',
+          changeInicio: sharedChangeInicio, changeCierre: sharedChangeCierre,
           vip: vipVal, seguridad: seguridadVal, teams: teamsVal,
           reporteElectrico: first.reporteElectrico || false,
           reporteElectricoEnviado: false, reporteElectricoTexto:'', reporteElectricoProveedor:'', reporteElectricoEstado:'',
