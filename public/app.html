@@ -3606,7 +3606,10 @@ function buildRowHtml(r, extraClass){
       if(gkey && tr.classList.contains('masivo-group-row')){
         const groupSample = records.filter(r => getMasivoGroupKey(r) === gkey);
         const esLoteMasivo = groupSample.length > 0 && groupSample.every(r => r.tipoProceso === 'MASIVO');
-        if(esLoteMasivo){
+        // En la pestaña TP Change (grupos por número de TP) el doble clic siempre abre la
+        // edición conjunta del lote, aunque algún registro no venga de un envío masivo.
+        const esGrupoTpChange = gkey.indexOf('tpchange:') === 0 && groupSample.length > 0;
+        if(esLoteMasivo || esGrupoTpChange){
           openMasivoGroupModal(gkey);
         } else {
           // Grupo agrupado solo porque comparten el mismo número de TP Change (no todos
@@ -6141,7 +6144,7 @@ function openMasivoGroupModal(groupKey){
   ];
   // Los lotes creados antes de este cambio pueden traer sitios en la categoría "Change":
   // se sigue mostrando para no perderlos, pero ya no se ofrece en lotes nuevos.
-  if(groupRecords.some(r => r.categoria === 'CHANGE')){
+  if(groupRecords.some(r => r.categoria === 'CHANGE') || String(groupKey).indexOf('tpchange:') === 0){
     GROUP_MASIVO_CATS.push({ key:'CHANGE', label:'CHANGE', title:'🔧 Change' });
   }
   GROUP_MASIVO_CATS.forEach(c=>{
