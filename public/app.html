@@ -1158,6 +1158,13 @@
     background:var(--panel-3); color:var(--text); border:1px solid var(--line);
   }
   .tp-alert-actions button:hover{ border-color:var(--danger); color:var(--danger); }
+  /* Variantes para avisos de seguimientos / reportes / atendidos */
+  .tp-alert.tp-alert-warn{ border-color:rgba(255,184,0,0.45); border-left-color:var(--warn); }
+  .tp-alert.tp-alert-warn .tp-alert-title{ color:var(--warn); }
+  .tp-alert.tp-alert-warn .tp-alert-actions button:hover{ border-color:var(--warn); color:var(--warn); }
+  .tp-alert.tp-alert-ok{ border-color:var(--accent-dim); border-left-color:var(--accent); }
+  .tp-alert.tp-alert-ok .tp-alert-title{ color:var(--accent); }
+  .tp-alert.tp-alert-ok .tp-alert-actions button:hover{ border-color:var(--accent); color:var(--accent); }
 
 
   /* Aviso FIJO de la hoja "Reportes Eléctricos" (no se autooculta con un timer): vive
@@ -2127,7 +2134,11 @@ async function loadAll(showLoadingText){
     if(resCases !== null){
       const rawRecords = resCases.value ? resCases.value : '[]';
       recordsChanged = rawRecords !== lastRecordsRaw;
-      if(recordsChanged){ records = JSON.parse(rawRecords); lastRecordsRaw = rawRecords; }
+      if(recordsChanged){
+        const prevRecords = records;
+        records = JSON.parse(rawRecords); lastRecordsRaw = rawRecords;
+        if(!isFirstLoad) notifyEventosCambios(prevRecords, records); // avisos de cambios hechos por otras personas
+      }
     } else if(isFirstLoad){
       recordsChanged = true;
       records = [];
@@ -6836,11 +6847,11 @@ function tpAlertBeep(){
   }catch(e){ /* sin audio disponible o bloqueado hasta que la persona interactúe: se ignora */ }
 }
 
-function tpAlertSystemNotify(titulo, cuerpo, tag){
+function tpAlertSystemNotify(titulo, cuerpo, tag, onGo){
   try{
     if(!('Notification' in window) || Notification.permission !== 'granted') return;
     const n = new Notification(titulo, { body: cuerpo, tag: tag, requireInteraction: true });
-    n.onclick = ()=>{ window.focus(); irATpChange(); n.close(); };
+    n.onclick = ()=>{ window.focus(); (onGo || irATpChange)(); n.close(); };
   }catch(e){ /* algunos navegadores móviles no permiten new Notification(): queda la tarjeta dentro de la app */ }
 }
 
@@ -6859,29 +6870,77 @@ function requestTpNotifPermission(){
   }).catch(()=>{});
 }
 
-function showTpAlert(a){ // a = { key, titulo, cuerpo, meta }
+function showTpAlert(a){ // a = { key, titulo, cuerpo, meta, icon?, variant?('warn'|'ok'), goLabel?, onGo? }
   const stack = document.getElementById('tpAlertStack');
   if(!stack) return;
   [...stack.children].forEach(c => { if(c.dataset.key === a.key) c.remove(); });
   const el = document.createElement('div');
-  el.className = 'tp-alert';
+  el.className = 'tp-alert' + (a.variant ? ' tp-alert-' + a.variant : '');
   el.dataset.key = a.key;
   const pedirPermiso = ('Notification' in window && Notification.permission === 'default');
   el.innerHTML = `
     <div class="tp-alert-head">
-      <span class="tp-alert-title">⏰ ${escapeHtml(a.titulo)}</span>
+      <span class="tp-alert-title">${a.icon || '⏰'} ${escapeHtml(a.titulo)}</span>
       <button type="button" class="tp-alert-x" aria-label="Cerrar aviso" title="Cerrar aviso">✕</button>
     </div>
     <div class="tp-alert-body">${escapeHtml(a.cuerpo)}<br><span class="tp-alert-meta">${escapeHtml(a.meta)}</span></div>
     <div class="tp-alert-actions">
-      <button type="button" class="tp-alert-go">Ver en TP Change</button>
+      <button type="button" class="tp-alert-go">${escapeHtml(a.goLabel || 'Ver en TP Change')}</button>
       ${pedirPermiso ? '<button type="button" class="tp-alert-perm">Activar avisos del navegador</button>' : ''}
     </div>`;
   el.querySelector('.tp-alert-x').addEventListener('click', ()=> el.remove());
-  el.querySelector('.tp-alert-go').addEventListener('click', ()=>{ el.remove(); irATpChange(); });
+  el.querySelector('.tp-alert-go').addEventListener('click', ()=>{ el.remove(); (a.onGo || irATpChange)(); });
   const permBtn = el.querySelector('.tp-alert-perm');
   if(permBtn) permBtn.addEventListener('click', requestTpNotifPermission);
   stack.appendChild(el);
+}
+
+/* ---------------- AVISOS DE SEGUIMIENTOS, REPORTES Y ATENDIDOS ----------------
+   Cuando llegan cambios de OTRA persona en el sondeo (los cambios propios no avisan, porque
+   al guardar ya queda registrado el estado local), se compara la lista anterior con la nueva
+   y se muestra una tarjeta por tipo de evento:
+   🔔 seguimiento solicitado · 📋 reporte eléctrico solicitado · ✅ atendido (seguimiento
+   atendido o reporte enviado). Mismo estilo, pitido y notificación del navegador que TP Change. */
+function irAElectrico(){
+  electricoViewMode = 'activos';
+  switchTab('ELECTRICO');
+}
+
+function notifyEventosCambios(prev, curr){
+  try{
+    const prevMap = new Map((prev || []).map(r => [r.id, r]));
+    const ev = { seguimiento:[], reporte:[], atendido:[] };
+    (curr || []).forEach(r=>{
+      if(r.estado === 'CERRADO') return;
+      const p = prevMap.get(r.id) || {};
+      const sid = r.serviceId || '—';
+      if(r.seguimientoSolicitado && !r.seguimientoSolicitadoAtendido &&
+         (!p.seguimientoSolicitado || p.seguimientoSolicitadoAtendido || (r.seguimientoSolicitadoCount || 0) > (p.seguimientoSolicitadoCount || 0))){
+        ev.seguimiento.push(sid);
+      }
+      if(r.reporteElectrico && !p.reporteElectrico) ev.reporte.push(sid);
+      const segAtendido = r.seguimientoSolicitado && r.seguimientoSolicitadoAtendido && p.seguimientoSolicitado && !p.seguimientoSolicitadoAtendido;
+      const repEnviado = r.reporteElectricoEnviado && !p.reporteElectricoEnviado;
+      if(segAtendido || repEnviado) ev.atendido.push(sid);
+    });
+    const defs = [
+      { k:'seguimiento', icon:'🔔', variant:'warn', one:'Seguimiento solicitado', many:'seguimientos solicitados' },
+      { k:'reporte',     icon:'📋', variant:'warn', one:'Reporte eléctrico solicitado', many:'reportes eléctricos solicitados' },
+      { k:'atendido',    icon:'✅', variant:'ok',   one:'Atendido', many:'atendidos' }
+    ];
+    let hubo = false;
+    defs.forEach(d=>{
+      const ids = [...new Set(ev[d.k])];
+      if(!ids.length) return;
+      hubo = true;
+      const titulo = ids.length === 1 ? d.one : `${ids.length} ${d.many}`;
+      const cuerpo = ids.length > 4 ? ids.slice(0,4).join(', ') + ` +${ids.length - 4}` : ids.join(', ');
+      const meta = 'Hace un momento · Reportes Eléctricos';
+      showTpAlert({ key:'ev-' + d.k, titulo, cuerpo, meta, icon:d.icon, variant:d.variant, goLabel:'Ver en Reportes Eléctricos', onGo:irAElectrico });
+      tpAlertSystemNotify(titulo, `${cuerpo}\n${meta}`, 'ev-' + d.k, irAElectrico);
+    });
+    if(hubo) tpAlertBeep();
+  }catch(e){ /* un fallo en los avisos nunca debe afectar la sincronización */ }
 }
 
 async function loadTpAlertSeen(){
