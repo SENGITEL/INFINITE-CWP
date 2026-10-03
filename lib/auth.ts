@@ -93,6 +93,7 @@ function getUsers(): Record<string, string> {
     supervisor: "infinite2026",
     operador: "noc2024",
     daniel: "infinite26",
+    brayan: "infinite26",
   }
 }
 
