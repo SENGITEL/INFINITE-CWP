@@ -1202,6 +1202,47 @@
   ::-webkit-scrollbar-track{ background:transparent; }
   ::-webkit-scrollbar-thumb{ background:var(--line); border-radius:8px; }
   ::-webkit-scrollbar-thumb:hover{ background:var(--accent-dim); }
+
+  /* ---------------- Consultor de sitios (Id / Medidor / NIS) ---------------- */
+  .topbar{ position:relative; }
+  .idq-kbd{ font-family:var(--font-mono); font-size:10.5px; color:var(--text-faint); margin-left:6px; padding:1px 5px; border:1px solid var(--line); border-radius:4px; }
+  .idq-panel{
+    display:none; position:absolute; top:calc(100% - 6px); right:0; width:min(560px, 100%); z-index:60;
+    background:var(--panel); border:1px solid var(--line); border-radius:12px;
+    box-shadow:var(--shadow-panel); padding:14px 16px;
+  }
+  .idq-panel.open{ display:block; }
+  .idq-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+  .idq-title{ font-size:14px; font-weight:800; }
+  .idq-x{ background:transparent; border:1px solid var(--line); color:var(--text-dim); border-radius:6px; padding:3px 8px; cursor:pointer; font-size:12px; }
+  .idq-x:hover{ color:var(--text); border-color:var(--accent-dim); }
+  .idq-modes{ display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap; }
+  .idq-mode{ background:var(--panel-2); border:1px solid var(--line); color:var(--text-dim); border-radius:8px; padding:6px 12px; font-size:12.5px; font-weight:700; cursor:pointer; font-family:inherit; }
+  .idq-mode:hover{ color:var(--text); border-color:var(--accent-dim); }
+  .idq-mode.active{ background:var(--accent-dim); color:var(--accent); border-color:var(--accent); }
+  .idq-row{ display:flex; gap:8px; }
+  .idq-input{
+    flex:1; min-width:0; background:var(--panel-2); border:1px solid var(--line); color:var(--text);
+    border-radius:8px; padding:9px 12px; font-size:13.5px; font-family:var(--font-mono); outline:none;
+  }
+  .idq-input:focus{ border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-glow); }
+  .idq-msg{ font-size:12.5px; color:var(--danger); min-height:18px; margin:6px 0 2px; }
+  .idq-msg.info{ color:var(--text-dim); }
+  .idq-list{ display:flex; gap:6px; flex-wrap:wrap; margin:4px 0 8px; }
+  .idq-pick{ background:var(--panel-2); border:1px solid var(--line); color:var(--text-dim); border-radius:6px; padding:4px 9px; font-size:12px; cursor:pointer; font-family:inherit; }
+  .idq-pick:hover{ color:var(--text); border-color:var(--accent-dim); }
+  .idq-pick.active{ color:var(--accent); border-color:var(--accent); }
+  .idq-card{ display:none; background:var(--panel-2); border:1px solid var(--line-soft); border-radius:12px; padding:12px 14px; max-height:50vh; overflow:auto; }
+  .idq-card.show{ display:block; }
+  .idq-card-top{ display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:8px; }
+  .idq-name{ font-size:15px; font-weight:800; }
+  .idq-id{ font-family:var(--font-mono); font-size:12px; color:var(--text-dim); }
+  .idq-vip{ font-size:11.5px; font-weight:800; padding:3px 10px; border-radius:6px; background:var(--grey-bg); color:var(--text-dim); white-space:nowrap; }
+  .idq-vip.yes{ background:var(--warn-bg); color:var(--warn); }
+  .idq-field{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:5px 0; border-bottom:1px solid var(--line-soft); font-size:12.5px; }
+  .idq-field .k{ color:var(--text-dim); flex-shrink:0; }
+  .idq-field .v{ display:flex; align-items:center; gap:8px; text-align:right; min-width:0; word-break:break-word; }
+  .idq-actions{ display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; }
 </style>
 </head>
 <body>
@@ -1224,9 +1265,25 @@
       <button class="btn-ghost" id="refreshBtn" title="Actualizar ahora desde el servidor"><span id="refreshIcon">🔄</span> Actualizar</button>
       <button class="btn-ghost" id="notifBtn" style="display:none;" title="Permitir que el navegador te avise cuando un TP Change cumpla su hora de cierre">🔔 Activar avisos</button>
       <button class="btn-ghost" id="themeToggleBtn" title="Cambiar entre modo oscuro y claro">🌙 Oscuro</button>
+      <button class="btn-ghost" id="idqBtn" title="Consultar un sitio por Id, Medidor o NIS (Ctrl+K)">🔎 Consultar ID<span class="idq-kbd">Ctrl+K</span></button>
       <button class="btn-ghost" id="exportBtn">⬇ Exportar Excel</button>
       <button class="btn-ghost" id="shiftSummaryBtn">📋 Resumen de turno</button>
       <button class="btn-primary" id="newBtn">+ Nuevo registro</button>
+    </div>
+
+    <div class="idq-panel" id="idqPanel" role="dialog" aria-label="Consultor de sitios">
+      <div class="idq-head">
+        <span class="idq-title">Consultor de sitios</span>
+        <button type="button" class="idq-x" id="idqClose" title="Cerrar (Esc)">✕</button>
+      </div>
+      <div class="idq-modes" id="idqModes"></div>
+      <div class="idq-row">
+        <input class="idq-input" id="idqInput" autocomplete="off" spellcheck="false" />
+        <button type="button" class="btn-primary" id="idqGo">Buscar</button>
+      </div>
+      <div class="idq-msg" id="idqMsg"></div>
+      <div class="idq-list" id="idqList"></div>
+      <div class="idq-card" id="idqCard"></div>
     </div>
   </div>
 
@@ -7292,6 +7349,147 @@ buildElectricoFilterRow();
 
 switchTab('ERICSSON');
 loadAll(true);
+
+
+/* ---------------- CONSULTOR DE SITIOS (Id / Medidor / NIS) ---------------- */
+(function(){
+  const btn = document.getElementById('idqBtn');
+  const panel = document.getElementById('idqPanel');
+  if(!btn || !panel) return;
+  const input = document.getElementById('idqInput');
+  const modesEl = document.getElementById('idqModes');
+  const msgEl = document.getElementById('idqMsg');
+  const listEl = document.getElementById('idqList');
+  const cardEl = document.getElementById('idqCard');
+
+  const MODES = {
+    siteId:  { label:'Id',      ph:'Site ID, por ejemplo 1001' },
+    medidor: { label:'Medidor', ph:'Número de medidor' },
+    nis:     { label:'NIS',     ph:'Número de NIS' }
+  };
+  const FIELDS = [
+    ['ubicacion','Ubicación'], ['medidor','Medidor'], ['nis','NIS'],
+    ['provincia','Provincia'], ['distrito','Distrito'], ['corregimiento','Corregimiento'],
+    ['proveedor','Proveedor'], ['dependencias','Dependencias'], ['baterias','Baterías'],
+    ['generador','Generador'], ['seguridad','Seguridad'], ['clienteVip','Cliente VIP'],
+    ['owner','Owner'], ['latitud','Latitud'], ['longitud','Longitud']
+  ];
+  let mode = 'siteId';
+  let current = null;
+
+  const norm = s => String(s == null ? '' : s).trim().toLowerCase().replace(/\s+/g,'');
+  const val  = v => Array.isArray(v) ? v.join(', ') : String(v == null ? '' : v).trim();
+
+  function setMsg(text, info){
+    msgEl.textContent = text || '';
+    msgEl.classList.toggle('info', !!info);
+  }
+  function drawModes(){
+    modesEl.innerHTML = Object.keys(MODES).map(k =>
+      `<button type="button" class="idq-mode${k===mode?' active':''}" data-mode="${k}">Por ${MODES[k].label}</button>`
+    ).join('');
+    input.placeholder = MODES[mode].ph;
+  }
+  function resetResults(){
+    setMsg(''); listEl.innerHTML = ''; cardEl.classList.remove('show'); cardEl.innerHTML = ''; current = null;
+  }
+  function showCard(s){
+    current = s;
+    const isVip = /^(si|sí|s|x|1|true|vip)$/i.test(val(s.vip));
+    const rows = FIELDS.map(([k,l]) => {
+      const v = val(s[k]);
+      if(!v) return '';
+      return `<div class="idq-field"><span class="k">${l}</span><span class="v"><span>${escapeHtml(v)}</span><button type="button" class="copy-btn" data-idqcopy="${escapeHtml(v)}" title="Copiar">📋</button></span></div>`;
+    }).join('');
+    const hasCoords = val(s.latitud) && val(s.longitud);
+    cardEl.innerHTML = `
+      <div class="idq-card-top">
+        <div><div class="idq-name">${escapeHtml(val(s.siteName) || '—')}</div><div class="idq-id">Id ${escapeHtml(val(s.siteId))}</div></div>
+        <span class="idq-vip${isVip?' yes':''}">${isVip?'VIP':'No VIP'}</span>
+      </div>
+      ${rows}
+      <div class="idq-actions">
+        <button type="button" class="btn-ghost" data-idqact="copyall">📋 Copiar ficha</button>
+        ${hasCoords ? '<button type="button" class="btn-ghost" data-idqact="map">📍 Ver en el mapa</button>' : ''}
+      </div>`;
+    cardEl.classList.add('show');
+    listEl.querySelectorAll('.idq-pick').forEach(b => b.classList.toggle('active', b.dataset.sid === val(s.siteId)));
+  }
+  function search(){
+    resetResults();
+    const t = norm(input.value);
+    if(!t){ setMsg('Escribe un valor para buscar por ' + MODES[mode].label); return; }
+    if(!sites.length){ setMsg('La base de sitios aún no está cargada. Espera unos segundos o pulsa Actualizar.'); return; }
+    let res = sites.filter(s => norm(s[mode]) === t);
+    let partial = false;
+    if(!res.length){ res = sites.filter(s => norm(s[mode]).includes(t)); partial = true; }
+    if(!res.length){ setMsg('No hay sitios con ' + MODES[mode].label + ' "' + input.value.trim() + '"'); return; }
+    if(res.length === 1){
+      showCard(res[0]);
+      if(partial) setMsg('Coincidencia parcial: ' + val(res[0][mode]), true);
+      return;
+    }
+    const shown = res.slice(0, 12);
+    const head = partial ? 'No hay coincidencia exacta. Posibles sitios' : res.length + ' sitios con este ' + MODES[mode].label;
+    setMsg(head + (res.length > shown.length ? ' (primeros ' + shown.length + ')' : '') + ':', true);
+    listEl.innerHTML = shown.map(s =>
+      `<button type="button" class="idq-pick" data-sid="${escapeHtml(val(s.siteId))}">${escapeHtml(val(s.siteId))} · ${escapeHtml(val(s.siteName))}</button>`
+    ).join('');
+    if(!partial) showCard(res[0]);
+  }
+  function openPanel(){
+    panel.classList.add('open');
+    input.focus(); input.select();
+  }
+  function closePanel(){ panel.classList.remove('open'); }
+  function toggle(){ panel.classList.contains('open') ? closePanel() : openPanel(); }
+
+  btn.addEventListener('click', toggle);
+  document.getElementById('idqClose').addEventListener('click', closePanel);
+  document.getElementById('idqGo').addEventListener('click', search);
+  input.addEventListener('keydown', e => { if(e.key === 'Enter'){ e.preventDefault(); search(); } });
+  modesEl.addEventListener('click', e => {
+    const b = e.target.closest('[data-mode]'); if(!b) return;
+    mode = b.dataset.mode; input.value = ''; resetResults(); drawModes(); input.focus();
+  });
+  listEl.addEventListener('click', e => {
+    const b = e.target.closest('.idq-pick'); if(!b) return;
+    const s = sites.find(x => val(x.siteId) === b.dataset.sid);
+    if(s) showCard(s);
+  });
+  cardEl.addEventListener('click', async e => {
+    const c = e.target.closest('[data-idqcopy]');
+    if(c){
+      const ok = await copyTextToClipboard(c.getAttribute('data-idqcopy'));
+      showToast(ok ? 'Copiado' : 'No se pudo copiar', ok ? 'success' : 'error');
+      return;
+    }
+    const a = e.target.closest('[data-idqact]');
+    if(!a || !current) return;
+    if(a.dataset.idqact === 'copyall'){
+      const lines = ['Id: ' + val(current.siteId), 'Name: ' + val(current.siteName)];
+      FIELDS.forEach(([k,l]) => { const v = val(current[k]); if(v) lines.push(l + ': ' + v); });
+      const ok = await copyTextToClipboard(lines.join('\n'));
+      showToast(ok ? 'Ficha copiada' : 'No se pudo copiar', ok ? 'success' : 'error');
+    } else if(a.dataset.idqact === 'map'){
+      window.open('https://www.google.com/maps?q=' + encodeURIComponent(val(current.latitud) + ',' + val(current.longitud)), '_blank', 'noopener');
+    }
+  });
+  document.addEventListener('click', e => {
+    if(!panel.classList.contains('open')) return;
+    const path = e.composedPath ? e.composedPath() : [];
+    if(path.includes(panel) || path.includes(btn)) return;
+    closePanel();
+  });
+  document.addEventListener('keydown', e => {
+    if((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k'){
+      e.preventDefault(); toggle();
+    } else if(e.key === 'Escape' && panel.classList.contains('open')){
+      closePanel();
+    }
+  });
+  drawModes();
+})();
 
 /* ---------------- BOTÓN CERRAR SESIÓN ---------------- */
 (function(){
