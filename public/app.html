@@ -4967,20 +4967,21 @@ function generateIngresoTeamsText(r){
   return '|INGRESO|' + parts.join('|') + '|';
 }
 
-// Mensaje tipo Teams para registros de TP (CHANGE): Service ID/Nombre, TP Change, Contacto,
-// ventana de fecha/hora de inicio-cierre, Proceso (Sin/Con afectación) y Observación.
+// Mensaje de comunicado para registros de TP (CHANGE): Trabajos a realizar (título del OTS),
+// hora de inicio (la del registro), hora de cierre (se deja en blanco), Contacto, Impacto
+// (Proceso: Sin/Con afectación) y Observaciones.
 function generateChangeTeamsText(r){
-  const siteLabel = r.nombreSitio ? `${r.serviceId||''} - ${r.nombreSitio}` : (r.serviceId||'');
-  const parts = [siteLabel];
-  if((r.tpChange||'').trim() !== '') parts.push(`TP ${r.tpChange.trim()}`);
-  if((r.contacto||'').trim() !== '') parts.push(r.contacto.trim());
-  if((r.celular||'').trim() !== '') parts.push(r.celular.trim());
-  const inicioLbl = formatDatetimeLocalLabel(r.changeInicio);
-  const cierreLbl = formatDatetimeLocalLabel(r.changeCierre);
-  if(inicioLbl || cierreLbl) parts.push(`${inicioLbl || '—'} a ${cierreLbl || '—'}`);
-  if((r.proceso||'').trim() !== '') parts.push(r.proceso.trim());
-  if((r.observacion||'').trim() !== '') parts.push(r.observacion.trim());
-  return '|CHANGE|' + parts.join('|') + '|';
+  const contacto = [ (r.contacto||'').trim(), (r.celular||'').trim() ].filter(Boolean).join(' - ');
+  return [
+    'Se recibe comunicado para dar Inicio a la siguiente actividad :',
+    '',
+    `Trabajos a realizar: ${(r.actividad||'').trim()}`,
+    `Hora inicio: ${formatDatetimeLocalLabel(r.changeInicio)}`,
+    'Hora cierre: ',
+    `Contacto: ${contacto}`,
+    `Impacto: ${(r.proceso||'').trim()}`,
+    `Observaciones: ${(r.observacion||'').trim()}`
+  ].join('\n');
 }
 
 /* ---------------- CASE MODAL ---------------- */
@@ -5073,7 +5074,7 @@ function openModal(id, readOnly){
               <input type="text" id="f_contacto" value="${escapeHtml(r.contacto||'')}" placeholder="Nombre de quien reporta / atiende" />
             </div>
             <div id="actividadFieldBox">
-              <label>Actividad</label>
+              <label id="f_actividad_label">Actividad</label>
               <input type="text" id="f_actividad" value="${escapeHtml(r.actividad||'')}" placeholder="Qué se va a realizar" />
             </div>
             <div id="celularFieldBox" style="display:none;">
@@ -5259,7 +5260,8 @@ function openModal(id, readOnly){
       const fOts2 = document.getElementById('fieldOtsSev2'); if(fOts2) fOts2.style.display = 'none';
       const fFecha = document.getElementById('fieldFechaAlarma'); if(fFecha) fFecha.style.display = 'none';
       const fTipo = document.getElementById('fieldTipoProceso'); if(fTipo) fTipo.style.display = 'none';
-      const actBox = document.getElementById('actividadFieldBox'); if(actBox) actBox.style.display = 'none';
+      const actBox = document.getElementById('actividadFieldBox'); if(actBox) actBox.style.display = '';
+      const actLbl0 = document.getElementById('f_actividad_label'); if(actLbl0) actLbl0.textContent = 'Trabajos a realizar (título del OTS)';
       const celBox = document.getElementById('celularFieldBox'); if(celBox) celBox.style.display = '';
       const ingresoBox = document.getElementById('ingresoFieldsBox'); if(ingresoBox) ingresoBox.style.display = '';
       const changeBox = document.getElementById('changeFieldsBox'); if(changeBox) changeBox.style.display = '';
@@ -5685,7 +5687,9 @@ function openModal(id, readOnly){
     const ingresoMode = (estadoSelect.value === 'INGRESO' || estadoSelect.value === 'SALIDA');
     const changeMode = estadoSelect.value === 'TP (CHANGE)';
     ingresoFieldsBox.style.display = (ingresoMode || changeMode) ? '' : 'none';
-    actividadFieldBox.style.display = changeMode ? 'none' : '';
+    actividadFieldBox.style.display = '';
+    const actLbl = document.getElementById('f_actividad_label');
+    if(actLbl) actLbl.textContent = changeMode ? 'Trabajos a realizar (título del OTS)' : 'Actividad';
     if(celularFieldBox) celularFieldBox.style.display = changeMode ? '' : 'none';
     changeFieldsBox.style.display = changeMode ? '' : 'none';
     if(fieldFechaAlarma) fieldFechaAlarma.style.display = changeMode ? 'none' : '';
@@ -5706,7 +5710,7 @@ function openModal(id, readOnly){
       teamsHintEl.textContent = ingresoMode
         ? 'Este resumen se arma solo con Fecha, Service ID, Nombre, Contacto, Actividad y TP asociado. Si lo editas a mano aquí, tus cambios no se sobrescriben.'
         : changeMode
-          ? 'Este resumen se arma solo con Service ID, TP Change, Contacto, Celular, fecha/hora de inicio y cierre, Proceso y Observación. Si lo editas a mano aquí, tus cambios no se sobrescriben.'
+          ? 'Este mensaje se arma con Trabajos a realizar, Hora de inicio, Contacto, Impacto (Proceso) y Observaciones. Si lo editas a mano aquí, tus cambios no se sobrescriben.'
           : 'Este resumen se arma solo con OTS Sev 3/4, Service ID, Nombre, Proceso y Observación. Si lo editas a mano aquí, tus cambios no se sobrescriben.';
     }
     if((ingresoMode || changeMode) && tipoProceso === 'MASIVO'){
@@ -5756,14 +5760,8 @@ function openModal(id, readOnly){
       const changeCierre = document.getElementById('f_change_cierre').value;
       const proceso = document.getElementById('f_proceso').value.trim();
       const observacion = document.getElementById('f_observacion').value.trim();
-      const ids = parseServiceIdList(changeIdsInput.value);
-      if(ids.length === 0) return '';
-      const lines = ids.map(id=>{
-        const site = lookupSiteById(id);
-        const nombreSitio = site && site.siteName ? site.siteName : '';
-        return generateChangeTeamsText({ serviceId:id, nombreSitio, tpChange, contacto, celular, changeInicio, changeCierre, proceso, observacion });
-      });
-      return lines.join('\n');
+      const actividad = document.getElementById('f_actividad').value.trim();
+      return generateChangeTeamsText({ actividad, tpChange, contacto, celular, changeInicio, changeCierre, proceso, observacion });
     }
     const otsSev1 = document.getElementById('f_otsSev1').value.trim();
     const otsSev2 = document.getElementById('f_otsSev2').value.trim();
@@ -5877,6 +5875,7 @@ function openModal(id, readOnly){
         return;
       }
       const sharedContacto = document.getElementById('f_contacto').value.trim();
+      const sharedActividadChange = document.getElementById('f_actividad').value.trim();
       const sharedCelular = document.getElementById('f_celular').value.trim();
       const sharedInicio = changeInicioInput.value;
       const sharedCierre = document.getElementById('f_change_cierre').value;
@@ -5889,7 +5888,7 @@ function openModal(id, readOnly){
         const vipVal = site ? (normalizeVip(site.vip) || 'NO') : 'NO';
         const seguridadVal = site ? (normalizeVip(site.seguridad) || '') : '';
         const teamsVal = generateChangeTeamsText({
-          serviceId: sid, nombreSitio, tpChange: sharedTpChange, contacto: sharedContacto,
+          serviceId: sid, nombreSitio, tpChange: sharedTpChange, contacto: sharedContacto, celular: sharedCelular, actividad: sharedActividadChange,
           changeInicio: sharedInicio, changeCierre: sharedCierre, proceso: sharedProcesoChange, observacion: sharedObservacionChange
         });
         return {
@@ -5897,7 +5896,7 @@ function openModal(id, readOnly){
           otsSev1:'', otsSev2:'', fechaAlarma: fechaLocalHoy(),
           tpChange: sharedTpChange, serviceId: sid, nombreSitio, categoria:'', tipoProceso:'UNICO',
           proceso: sharedProcesoChange, observacion: sharedObservacionChange,
-          contacto: sharedContacto, celular: sharedCelular, actividad:'',
+          contacto: sharedContacto, celular: sharedCelular, actividad: sharedActividadChange,
           changeInicio: sharedInicio, changeCierre: sharedCierre,
           vip: vipVal, seguridad: seguridadVal, teams: teamsVal,
           reporteElectrico:false, reporteElectricoEnviado:false, reporteElectricoTexto:'', reporteElectricoProveedor:'', reporteElectricoEstado:'',
@@ -6384,7 +6383,7 @@ function openMasivoGroupModal(groupKey){
         r.changeCierre = sharedChangeCierre;
         r.teams = generateChangeTeamsText({
           serviceId: r.serviceId, nombreSitio: r.nombreSitio, tpChange: sharedTpChange,
-          contacto: r.contacto, celular: r.celular,
+          contacto: r.contacto, celular: r.celular, actividad: r.actividad,
           changeInicio: sharedChangeInicio, changeCierre: sharedChangeCierre,
           proceso: sharedProceso, observacion: sharedObservacion
         });
@@ -6410,7 +6409,7 @@ function openMasivoGroupModal(groupKey){
         const teamsVal = esGrupoChange
           ? generateChangeTeamsText({
               serviceId: sid, nombreSitio, tpChange: sharedTpChange,
-              contacto: first.contacto || '', celular: first.celular || '',
+              contacto: first.contacto || '', celular: first.celular || '', actividad: first.actividad || '',
               changeInicio: sharedChangeInicio, changeCierre: sharedChangeCierre,
               proceso: sharedProceso, observacion: sharedObservacion
             })
