@@ -2152,6 +2152,64 @@ function computeTkClusters(allRecords){
   });
   return byId;
 }
+// Plan de cierre por TK compartido. Reglas:
+//  - Se cierran los registros "ancla" (la fila/lote donde se hizo clic).
+//  - Otro registro que comparta un TK con ellos SOLO se cierra completo si TODOS sus TK abiertos
+//    están entre los que se cierran. Si tiene además un OTS Sev 3/4 distinto y sin cerrar, el
+//    registro sigue abierto y únicamente se marca como cerrado el TK compartido (botón "cerrar solo
+//    este TK"). Antes se cerraba completo y se arrastraba por cadenas (A comparte con B, B con C…).
+//  - Sin cadenas: solo cuenta lo que se comparte directamente con las anclas.
+function openTkValues(r){
+  const v = [];
+  if((r.otsSev1||'').trim() && !r.otsSev1Cerrado) v.push(r.otsSev1.trim());
+  if((r.otsSev2||'').trim() && !r.otsSev2Cerrado) v.push(r.otsSev2.trim());
+  if((r.tpChange||'').trim()) v.push(r.tpChange.trim());
+  return v;
+}
+// Misma regla que tieneOtsBloqueandoCierre (TP Change con OTS Sev 3/4 sin cerrar no se puede cerrar).
+function otsBloqueaCierre(r){
+  if(!(r.tpChange||'').trim()) return false;
+  if((r.otsSev1||'').trim() && !r.otsSev1Cerrado) return true;
+  if((r.otsSev2||'').trim() && !r.otsSev2Cerrado) return true;
+  return false;
+}
+function planTkClose(anchors){
+  const anchorIds = new Set(anchors.map(r => r.id));
+  const S = new Set();
+  anchors.forEach(r => getTkValues(r).forEach(v => S.add(v)));
+  const full = anchors.filter(r => r.estado !== 'CERRADO');
+  const partial = [];
+  records.forEach(r => {
+    if(anchorIds.has(r.id) || r.estado === 'CERRADO') return;
+    const vals = openTkValues(r);
+    if(!vals.some(v => S.has(v))) return;
+    if(vals.every(v => S.has(v))){ full.push(r); return; }
+    const fields = [];
+    if((r.otsSev1||'').trim() && !r.otsSev1Cerrado && S.has(r.otsSev1.trim())) fields.push('otsSev1Cerrado');
+    if((r.otsSev2||'').trim() && !r.otsSev2Cerrado && S.has(r.otsSev2.trim())) fields.push('otsSev2Cerrado');
+    if(fields.length) partial.push({ rec: r, fields });
+  });
+  return { full, partial };
+}
+// Ejecuta el plan (tras confirmar). Devuelve cuántos se cerraron completos y cuántos solo parcialmente.
+function aplicarPlanTkClose(plan){
+  const bloqueados = plan.full.filter(otsBloqueaCierre);
+  const cerrar = plan.full.filter(r => !otsBloqueaCierre(r));
+  cerrar.forEach(r => { r.estado = 'CERRADO'; r.cerradoAt = r.cerradoAt || Date.now(); });
+  plan.partial.forEach(p => p.fields.forEach(f => { p.rec[f] = true; }));
+  return { cerrados: cerrar.length, bloqueados: bloqueados.length, parciales: plan.partial.length };
+}
+function textoPlanTkClose(plan, base){
+  const bloq = plan.full.filter(otsBloqueaCierre).length;
+  const cerr = plan.full.length - bloq;
+  let t = base.replace('{n}', cerr);
+  if(plan.partial.length) t += `\n\nOJO: ${plan.partial.length} registro(s) comparten un TK pero tienen OTS Sev 3/4 distinto sin cerrar. Esos NO se cierran: solo se marca como cerrado el TK compartido (${plan.partial.map(p => (p.rec.serviceId||'sin ID') + ' → ' + p.fields.map(f => (f === 'otsSev1Cerrado' ? p.rec.otsSev1 : p.rec.otsSev2)).join(', ')).join('; ')}).`;
+  if(bloq) t += `\n\n${bloq} quedan fuera por tener TP Change con OTS Sev 3/4 sin cerrar.`;
+  return t;
+}
+function toastPlanTkClose(res){
+  showToast(`${res.cerrados} registro(s) cerrado(s)${res.parciales ? `, ${res.parciales} con solo el TK compartido cerrado` : ''}${res.bloqueados ? `, ${res.bloqueados} sin cerrar por OTS pendiente` : ''}`);
+}
 let electricoSearchTerm = "";
 let electricoViewMode = "activos"; // "activos" | "cerrados" — separa los reportes abiertos de los cerrados
 let electricoColFilters = {}; // filtros por columna de la fila de filtros de la hoja "Reportes Eléctricos" ({ clave: valor })
@@ -3755,9 +3813,10 @@ function buildRowHtml(r, extraClass){
     const allResumenCellHtml = textoExpuesto
       ? groupTextCellHtml(groupUniqueTexts(groupRecords, x=>reporteResumenTexto(x)), searchTerm, { copy:true })
       : (() => { const resumenes = groupRecords.map(x=>reporteResumenTexto(x)).filter(Boolean); if(resumenes.length===0) return '<span class="empty-dash">—</span>'; const texto = resumenes.join('\n\n'); return `<div class="copy-cell"><span class="text-flag" title="${escapeHtml(texto)}">Texto</span><button type="button" class="copy-btn" data-copy="${escapeHtml(texto)}" title="Copiar">📋</button></div>`; })();
-    const tkSharing = closeTkCluster(groupRecords);
-    const tkPending = tkSharing.filter(x=>x.estado!=='CERRADO');
-    const tkExtra = tkSharing.length - groupRecords.length; // cuántos vienen de FUERA de este envío masivo
+    const tkPlan = planTkClose(groupRecords);
+    const tkPending = tkPlan.full;
+    const tkExtra = tkPending.filter(x => !groupRecords.includes(x)).length; // cuántos vienen de FUERA de este envío masivo
+    const tkPartialN = tkPlan.partial.length;
     const esLoteMasivo = groupRecords.every(x => x.tipoProceso === 'MASIVO');
     return `
       <tr class="est-${cls} masivo-group-row" data-group="${groupKey}" title="${esLoteMasivo ? 'Doble clic para editar todo el lote (agregar sitios, cambiar OTS/TP, etc.)' : 'Doble clic para ver/editar cada Service ID de este grupo (mismo TP Change u OTS)'}">
@@ -3766,7 +3825,7 @@ function buildRowHtml(r, extraClass){
             ${commonEstado ? badgeHtml(commonEstado) : '<span class="masivo-mixed">Varios</span>'}
             <div class="estado-actions">
               ${groupRecords.some(puedeEscalar) ? `<button type="button" class="action-btn action-escalate" data-escalate-group="${groupKey}" title="Escalar los ${groupRecords.filter(puedeEscalar).length} registro(s) de este lote">${ROW_ICONS.escalate}</button>` : ''}
-              ${tkPending.length > 0 ? `<button type="button" class="action-btn action-close" data-close-tk-group="${groupKey}" title="Cerrar los ${tkPending.length} registro(s) pendientes de este lote${tkExtra>0 ? ` (incluye ${tkExtra} que comparten el mismo TK fuera del lote)` : ''}">${ROW_ICONS.check}</button>` : ''}
+              ${tkPending.length > 0 ? `<button type="button" class="action-btn action-close" data-close-tk-group="${groupKey}" title="Cerrar los ${tkPending.length} registro(s) pendientes de este lote${tkExtra>0 ? ` (incluye ${tkExtra} que comparten el mismo TK fuera del lote)` : ''}${tkPartialN>0 ? ` · ${tkPartialN} que comparten un TK pero tienen otro OTS sin cerrar solo cierran ese TK` : ''}">${ROW_ICONS.check}</button>` : ''}
               ${tkPending.length > 0 ? `<button type="button" class="action-btn action-pending" data-pending-group="${groupKey}" title="Marcar los registros pendientes de este grupo como pendiente de cierre">${ROW_ICONS.pending}</button>` : ''}
               ${groupRecords.some(x=>x.estado==='CERRADO') ? `<button type="button" class="action-btn action-reopen" data-reopen-group="${groupKey}" title="Reabrir los ${groupRecords.filter(x=>x.estado==='CERRADO').length} registro(s) cerrados de este grupo">${ROW_ICONS.reopen}</button>` : ''}
               ${groupRecords.some(x=>x.estado==='PENDIENTE POR CIERRE') ? `<button type="button" class="action-btn action-reopen" data-unpend-group="${groupKey}" title="Volver a En gestión los registros pendientes de cierre de este grupo">${ROW_ICONS.reopen}</button>` : ''}
@@ -3840,8 +3899,7 @@ function buildRowHtml(r, extraClass){
       const groupRecords = list.filter(x => getMasivoGroupKey(x) === gkey);
       if(groupRecords.length > 1){
         if(expandedMasivoGroups.has(gkey)){
-          const tkSharing = closeTkCluster(groupRecords);
-          const tkPending = tkSharing.filter(x=>x.estado!=='CERRADO');
+          const tkPending = planTkClose(groupRecords).full;
           const closeBtnHtml = tkPending.length > 0 ? `<button type="button" class="close-tk-btn" data-close-tk-group="${gkey}" title="Cerrar todos los registros que comparten TK con un solo clic">${ROW_ICONS.check} Cerrar por TK (${tkPending.length})</button>` : '';
           rowsHtml.push(`<tr class="masivo-collapse-row" data-group="${gkey}"><td colspan="20"><button type="button" class="masivo-toggle-btn" data-toggle-group="${gkey}">▾ Contraer grupo (${groupRecords.length} Service ID)</button>${closeBtnHtml}</td></tr>`);
           groupRecords.forEach(gr => rowsHtml.push(buildRowHtml(gr, 'masivo-child')));
@@ -4112,23 +4170,19 @@ function buildRowHtml(r, extraClass){
   queryAllIn(touchedRows, '[data-close-tk]').forEach(btn=>{
     btn.addEventListener('click', async (e)=>{
       e.stopPropagation();
-      const id = btn.dataset.closeTk;
-      const anchor = records.find(r=>r.id===id);
+      const anchor = records.find(r=>r.id===btn.dataset.closeTk);
       if(!anchor) return;
-      const cluster = computeTkClusters(records).get(id) || [anchor];
-      const pendientesTodos = cluster.filter(r=>r.estado!=='CERRADO');
-      const bloqueados = pendientesTodos.filter(tieneOtsBloqueandoCierre);
-      const pendientes = pendientesTodos.filter(r=>!tieneOtsBloqueandoCierre(r));
-      if(pendientesTodos.length === 0) return;
-      if(pendientes.length === 0){
+      const plan = planTkClose([anchor]);
+      if(plan.full.length === 0 && plan.partial.length === 0) return;
+      if(plan.full.filter(r=>!tieneOtsBloqueandoCierre(r)).length === 0 && plan.partial.length === 0){
         showToast('No se puede cerrar: todos tienen TP Change con OTS Sev 3/4 sin cerrar', 'error');
         return;
       }
-      if(!confirm(`¿Cerrar los ${pendientes.length} registro(s) que comparten este mismo TK?${bloqueados.length>0 ? ` (${bloqueados.length} quedan fuera por tener TP Change con OTS Sev 3/4 sin cerrar)` : ''}`)) return;
-      pendientes.forEach(r => { r.estado = 'CERRADO'; r.cerradoAt = r.cerradoAt || Date.now(); });
+      if(!confirm(textoPlanTkClose(plan, '¿Cerrar los {n} registro(s) que comparten este mismo TK?'))) return;
+      const res = aplicarPlanTkClose(plan);
       render();
       await saveRecords();
-      showToast(`${pendientes.length} registro(s) cerrado(s) por TK compartido${bloqueados.length>0 ? `, ${bloqueados.length} sin cerrar por OTS pendiente` : ''}`);
+      toastPlanTkClose(res);
     });
   });
   queryAllIn(touchedRows, '[data-close-tk-group]').forEach(btn=>{
@@ -4137,25 +4191,17 @@ function buildRowHtml(r, extraClass){
       const gkey = btn.dataset.closeTkGroup;
       const groupRecords = records.filter(r => getMasivoGroupKey(r) === gkey);
       if(groupRecords.length === 0) return;
-      const clustersNow = computeTkClusters(records);
-      const set = new Map();
-      groupRecords.forEach(r=>{
-        const cluster = clustersNow.get(r.id) || [r];
-        cluster.forEach(x => set.set(x.id, x));
-      });
-      const pendientesTodos = [...set.values()].filter(r=>r.estado!=='CERRADO');
-      const bloqueados = pendientesTodos.filter(tieneOtsBloqueandoCierre);
-      const pendientes = pendientesTodos.filter(r=>!tieneOtsBloqueandoCierre(r));
-      if(pendientesTodos.length === 0) return;
-      if(pendientes.length === 0){
+      const plan = planTkClose(groupRecords);
+      if(plan.full.length === 0 && plan.partial.length === 0) return;
+      if(plan.full.filter(r=>!tieneOtsBloqueandoCierre(r)).length === 0 && plan.partial.length === 0){
         showToast('No se puede cerrar: todos tienen TP Change con OTS Sev 3/4 sin cerrar', 'error');
         return;
       }
-      if(!confirm(`¿Cerrar los ${pendientes.length} registro(s) que comparten el mismo TK que este lote masivo?${bloqueados.length>0 ? ` (${bloqueados.length} quedan fuera por tener TP Change con OTS Sev 3/4 sin cerrar)` : ''}`)) return;
-      pendientes.forEach(r => { r.estado = 'CERRADO'; r.cerradoAt = r.cerradoAt || Date.now(); });
+      if(!confirm(textoPlanTkClose(plan, '¿Cerrar los {n} registro(s) de este lote y los que comparten únicamente sus mismos TK?'))) return;
+      const res = aplicarPlanTkClose(plan);
       render();
       await saveRecords();
-      showToast(`${pendientes.length} registro(s) cerrado(s) por TK compartido${bloqueados.length>0 ? `, ${bloqueados.length} sin cerrar por OTS pendiente` : ''}`);
+      toastPlanTkClose(res);
     });
   });
   queryAllIn(touchedRows, '[data-escalate-group]').forEach(btn=>{
