@@ -1291,6 +1291,7 @@
       <button class="btn-ghost" id="idqBtn" title="Consultar un sitio por Id, Medidor o NIS (Ctrl+K)">🔎 Consultar ID<span class="idq-kbd">Ctrl+K</span></button>
       <button class="btn-ghost btn-mim" id="mimBtn" title="MIM · Sitios caídos (se abre en otra ventana)">⚠ MIM <span class="count" id="countCaidos">0</span> ↗</button>
       <button class="btn-ghost" id="exportBtn">⬇ Exportar Excel</button>
+      <button class="btn-ghost" id="archBtn" style="display:none;" title="Cerrados archivados (más viejos que el plazo): buscar, reabrir, exportar o archivar más">🗄 Archivo</button>
       <button class="btn-ghost" id="shiftSummaryBtn">📋 Resumen de turno</button>
       <button class="btn-primary" id="newBtn">+ Nuevo registro</button>
     </div>
@@ -2617,6 +2618,74 @@ function lookupSiteById(siteId){
   return sites.find(s => (s.siteId||'').trim().toLowerCase() === q) || null;
 }
 
+/* ---------------- MASIVO: ELEGIR A QUÉ SERVICE ID SE LE CREA EL REPORTE ELÉCTRICO ----------------
+   Al crear un masivo con "Solicitar reporte eléctrico", ya no se crea para todos: se abre esta lista
+   y solo se pueden marcar los Service ID que tienen NIS en la base de sitios (sin NIS no hay a quién
+   reportarle, así que quedan deshabilitados y esos registros se crean sin reporte).
+   Devuelve una Promise con el Set de Service ID (en minúscula) elegidos, o null si se vuelve al formulario. */
+function pickReporteElectricoIds(groups){
+  return new Promise(resolve => {
+    const byId = new Map();
+    groups.forEach(g => g.ids.forEach(sid => {
+      const k = String(sid).toLowerCase();
+      if(!byId.has(k)) byId.set(k, { sid, cats: [] });
+      const it = byId.get(k);
+      if(!it.cats.includes(g.categoria)) it.cats.push(g.categoria);
+    }));
+    const items = [...byId.values()].map(it => {
+      const site = lookupSiteById(it.sid);
+      return { ...it, key: String(it.sid).toLowerCase(), nombre: site ? (site.siteName || '') : '', nis: site ? String(site.nis || '').trim() : '', enBase: !!site };
+    });
+    const conNis = items.filter(i => i.nis);
+    const ov = document.createElement('div');
+    ov.id = 'repPickOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;padding:12px';
+    const rows = items.map(i => `<tr style="${i.nis ? '' : 'opacity:.55;'}">
+        <td style="padding:6px 8px;width:34px"><input type="checkbox" data-rep-sid="${escapeHtml(i.key)}" ${i.nis ? 'checked' : 'disabled'}></td>
+        <td style="padding:6px 8px"><b>${escapeHtml(i.sid)}</b></td>
+        <td style="padding:6px 8px">${escapeHtml(i.nombre) || '<span style="opacity:.6">—</span>'}</td>
+        <td style="padding:6px 8px;font-size:12px;opacity:.8">${escapeHtml(i.cats.join(' · '))}</td>
+        <td style="padding:6px 8px;font-family:monospace">${i.nis ? escapeHtml(i.nis) : `<span style="color:var(--red,#e5534b)">${i.enBase ? 'Sin NIS' : 'No está en la base'}</span>`}</td>
+      </tr>`).join('');
+    ov.innerHTML = `<div role="dialog" aria-label="Reporte eléctrico del masivo" style="width:min(760px,100%);max-height:88vh;display:flex;flex-direction:column;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.5)">
+      <div style="padding:14px 16px;border-bottom:1px solid var(--line)">
+        <div style="font-weight:700;font-size:16px">⚡ ¿A qué Service ID se le crea el reporte eléctrico?</div>
+        <div style="font-size:12.5px;opacity:.8;margin-top:4px">Solo se pueden marcar los que tienen NIS en la base de sitios. Los demás se crean igual, pero sin reporte eléctrico.</div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 16px;border-bottom:1px solid var(--line-soft)">
+        <button type="button" class="btn-ghost" id="repAll">Marcar todos con NIS</button>
+        <button type="button" class="btn-ghost" id="repNone">Desmarcar todos</button>
+        <span id="repCount" style="font-size:12.5px;opacity:.85;margin-left:auto"></span>
+      </div>
+      <div style="overflow:auto;padding:0 16px">
+        <table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="text-align:left;position:sticky;top:0;background:var(--panel-2)">
+          <th style="padding:7px 8px"></th><th style="padding:7px 8px">Service ID</th><th style="padding:7px 8px">Nombre</th><th style="padding:7px 8px">Tipo de masivo</th><th style="padding:7px 8px">NIS</th></tr></thead><tbody>${rows}</tbody></table>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;padding:12px 16px;border-top:1px solid var(--line)">
+        <button type="button" class="btn-ghost" id="repBack">Volver al formulario</button>
+        <button type="button" class="btn-primary" id="repOk"></button>
+      </div></div>`;
+    document.body.appendChild(ov);
+    const boxes = [...ov.querySelectorAll('[data-rep-sid]')];
+    const chosen = () => boxes.filter(b => b.checked && !b.disabled).map(b => b.dataset.repSid);
+    const refresh = () => {
+      const n = chosen().length;
+      ov.querySelector('#repCount').textContent = `Reporte para ${n} de ${items.length} · ${items.length - conNis.length} sin NIS`;
+      ov.querySelector('#repOk').textContent = n ? `Crear registros (reporte en ${n})` : 'Crear registros sin reporte eléctrico';
+    };
+    const done = v => { document.removeEventListener('keydown', onKey, true); ov.remove(); resolve(v); };
+    const onKey = e => { if(e.key === 'Escape'){ e.stopPropagation(); done(null); } };
+    document.addEventListener('keydown', onKey, true);
+    boxes.forEach(b => b.addEventListener('change', refresh));
+    ov.querySelector('#repAll').onclick = () => { boxes.forEach(b => { if(!b.disabled) b.checked = true; }); refresh(); };
+    ov.querySelector('#repNone').onclick = () => { boxes.forEach(b => { b.checked = false; }); refresh(); };
+    ov.querySelector('#repBack').onclick = () => done(null);
+    ov.querySelector('#repOk').onclick = () => done(new Set(chosen()));
+    refresh();
+    ov.querySelector('#repOk').focus();
+  });
+}
+
 function lookupSiteByName(name){
   if(!name) return null;
   const q = name.trim().toLowerCase();
@@ -2684,6 +2753,7 @@ function switchTab(tab){
   if(tab === 'CAIDOS' && window.ensureCaidosFrame) window.ensureCaidosFrame();
   document.getElementById('newBtn').style.display = (tab === 'ERICSSON' || tab === 'HUAWEI') ? 'inline-block' : 'none';
   document.getElementById('exportBtn').style.display = (tab === 'ERICSSON' || tab === 'HUAWEI' || tab === 'INGRESOS' || tab === 'CERRADOS' || tab === 'TPCHANGE') ? 'inline-block' : 'none';
+  document.getElementById('archBtn').style.display = (tab === 'CERRADOS') ? 'inline-block' : 'none';
   document.body.classList.toggle('hide-gestor-col', tab === 'ERICSSON' || tab === 'HUAWEI');
   document.body.classList.toggle('hide-ingresos-extra-cols', tab === 'INGRESOS');
   document.body.classList.toggle('show-cerrado-col', tab === 'CERRADOS');
@@ -6092,7 +6162,7 @@ function openModal(id, readOnly){
     };
   }
 
-  document.getElementById('modalSave').onclick = ()=>{
+  document.getElementById('modalSave').onclick = async ()=>{
     // ----- MODO CHANGE: uno o varios Service ID bajo un mismo TP Change, cada uno crea su
     // propio registro TP (CHANGE) independiente (solo al crear) -----
     if(!editingId && document.getElementById('f_estado').value === 'TP (CHANGE)'){
@@ -6201,11 +6271,19 @@ function openModal(id, readOnly){
         return;
       }
 
+      // Reporte eléctrico: se elige a cuáles Service ID (solo con NIS) se les crea; null = volvió al formulario
+      let reporteIdSet = new Set();
+      if(sharedReporteElectrico){
+        reporteIdSet = await pickReporteElectricoIds(groups);
+        if(reporteIdSet === null) return;
+      }
+
       let totalCreated = 0;
       const masivoGroupId = uid(); // agrupa visualmente TODOS los registros de este envío masivo (todas las categorías, mismo TK) en una sola fila contraída
       const newRecs = [];
       groups.forEach(group=>{
         group.ids.forEach(sid=>{
+          const conReporte = sharedReporteElectrico && reporteIdSet.has(String(sid).toLowerCase());
           const site = lookupSiteById(sid);
           const nombreSitio = site ? (site.siteName||'') : '';
           const vipVal = site ? (normalizeVip(site.vip) || 'NO') : 'NO';
@@ -6225,14 +6303,14 @@ function openModal(id, readOnly){
             otsSev1: sharedOtsSev1, fechaAlarma: sharedFecha, otsSev2: sharedOtsSev2, tpChange: sharedTpChange,
             serviceId: sid, nombreSitio, categoria: group.categoria, tipoProceso: 'MASIVO', masivoGroupId, proceso: sharedProceso, observacion: sharedObservacion,
             vip: vipVal, seguridad: seguridadVal, teams: teamsVal,
-            reporteElectrico: sharedReporteElectrico,
+            reporteElectrico: conReporte,
             reporteElectricoEnviado: false, reporteElectricoTexto:'', reporteElectricoProveedor:'', reporteElectricoEstado:'',
-            reporteElectricoCreatedAt: sharedReporteElectrico ? Date.now() : null,
+            reporteElectricoCreatedAt: conReporte ? Date.now() : null,
             reporteElectricoSeguimientoAt: null,
-            seguimientoSolicitado: sharedSeguimientoSolicitado,
-            seguimientoSolicitadoAt: sharedSeguimientoSolicitado ? Date.now() : null,
+            seguimientoSolicitado: conReporte && sharedSeguimientoSolicitado,
+            seguimientoSolicitadoAt: (conReporte && sharedSeguimientoSolicitado) ? Date.now() : null,
             seguimientoSolicitadoAtendido: false,
-            seguimientoSolicitadoCount: sharedSeguimientoSolicitado ? 1 : 0,
+            seguimientoSolicitadoCount: (conReporte && sharedSeguimientoSolicitado) ? 1 : 0,
             seguimientoTexto:'',
             createdAt: Date.now()
           });
@@ -6255,7 +6333,7 @@ function openModal(id, readOnly){
       switchTab(soloChange ? 'TPCHANGE' : (gestor === 'HUAWEI' ? 'HUAWEI' : 'ERICSSON'));
       const avisoChange = (!soloChange && groups.some(g => g.categoria === 'CHANGE'))
         ? ' (los de categoría Change quedaron en la pestaña TP Change)' : '';
-      showToast(`${totalCreated} registro${totalCreated===1?'':'s'} creado${totalCreated===1?'':'s'}${avisoChange}`);
+      showToast(`${totalCreated} registro${totalCreated===1?'':'s'} creado${totalCreated===1?'':'s'}${avisoChange}${sharedReporteElectrico ? ` · reporte eléctrico en ${newRecs.filter(x=>x.reporteElectrico).length}` : ''}`);
       // la reconciliación con el servidor pasa por debajo, sin bloquear
       commitRecordsChange(list => {
         newRecs.forEach(nr => { if(!list.some(x=>x.id===nr.id)) list.push(nr); });
@@ -7022,6 +7100,208 @@ function openImportSitesModal(){
 document.getElementById('newBtn').addEventListener('click', ()=> openModal(null));
 document.getElementById('mimBtn').addEventListener('click', ()=>{ if(window.openMimWindow) window.openMimWindow(); });
 document.getElementById('exportBtn').addEventListener('click', exportToCSV);
+
+/* ---------------- ARCHIVO DE CERRADOS ----------------
+   La lista principal ("bitacora-records") guarda los registros activos y los cerrados recientes.
+   Los cerrados con más de N días (30 por defecto) se pasan, con un botón manual, a un archivo por mes
+   ("bitacora-archivo-AAAA-MM"). Esas claves NO se sondean ni se descargan al abrir la app: solo se leen
+   cuando se abre el panel "Archivo". Así el guardado y el sondeo de cada gestor pesan solo lo activo.
+   Seguridad: respaldo .json antes de mover; se escribe y se VERIFICA el archivo del mes antes de quitar
+   nada de la lista principal; si algo falla se cancela y los registros siguen donde estaban. */
+const ARCH_INDEX_KEY = 'bitacora-archivo-index';
+const ARCH_PREFIX = 'bitacora-archivo-';
+const ARCH_DEFAULT_DAYS = 30;
+let archIndex = {};                 // { 'AAAA-MM': cantidad, 'sin-fecha': cantidad }
+let archIndexOk = false;            // true cuando el índice se leyó bien (o no existe todavía)
+const archCache = new Map();        // 'AAAA-MM' -> registros (solo durante esta sesión)
+const archKey = ym => ARCH_PREFIX + ym;
+
+function cierreTs(r){ return r.cerradoAt || r.salidaAt || r.createdAt || (r.fechaAlarma ? Date.parse(r.fechaAlarma) : 0) || 0; }
+function archMonthOf(r){
+  const t = cierreTs(r); if(!t) return 'sin-fecha';
+  const d = new Date(t); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+}
+function archCandidates(days){
+  const cut = Date.now() - days * 86400000;
+  return records.filter(r => r.estado === 'CERRADO' && (!cierreTs(r) || cierreTs(r) < cut));
+}
+// Lectura estricta: distingue "no existe" (404 / sin valor) de un fallo real, para no pisar datos por error.
+async function archGet(key){
+  const res = await apiFetch('/api/storage/' + encodeURIComponent(key));
+  if(res.status === 404) return null;
+  if(!res.ok) throw new Error('archive_read_failed');
+  const data = await res.json();
+  return data && data.value ? data.value : null;
+}
+async function archReadMonth(ym){
+  const raw = await archGet(archKey(ym));
+  return raw ? (JSON.parse(raw) || []) : [];
+}
+async function archLoadIndex(){
+  try{
+    const raw = await archGet(ARCH_INDEX_KEY);
+    archIndex = raw ? (JSON.parse(raw) || {}) : {};
+    archIndexOk = true;
+  }catch(e){ archIndexOk = false; }
+  archUpdateBtn();
+  return archIndexOk;
+}
+function archTotal(){ return Object.values(archIndex).reduce((a,n) => a + (+n||0), 0); }
+function archUpdateBtn(){
+  const b = document.getElementById('archBtn'); if(!b) return;
+  b.textContent = '🗄 Archivo' + (archIndexOk && archTotal() ? ' (' + archTotal() + ')' : '');
+}
+function archDownload(blob, name){
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+function archStamp(){ const d = new Date(), p = n => String(n).padStart(2,'0'); return fechaLocalHoy(d) + '_' + p(d.getHours()) + p(d.getMinutes()); }
+
+async function archivarCerrados(days){
+  const cand = archCandidates(days);
+  if(!cand.length){ showToast('No hay cerrados con más de ' + days + ' días', 'info'); return false; }
+  if(!confirm(`Se archivarán ${cand.length} registro(s) cerrados de más de ${days} días.\n\n1) Se descarga primero un respaldo (.json).\n2) Se guardan en el archivo por mes y se verifica.\n3) Solo entonces se quitan de la lista principal.\n\nSiguen disponibles en 🗄 Archivo (buscar, exportar o reabrir). ¿Continuar?`)) return false;
+  try{
+    if(!(await archLoadIndex())) throw new Error('No se pudo leer el índice del archivo. Intenta de nuevo.');
+    archDownload(new Blob([JSON.stringify({ generado:new Date().toISOString(), criterio:`cerrados con más de ${days} días`, registros:cand }, null, 1)], { type:'application/json' }), `respaldo-cerrados-${archStamp()}.json`);
+    const byMonth = new Map();
+    cand.forEach(r => { const ym = archMonthOf(r); if(!byMonth.has(ym)) byMonth.set(ym, []); byMonth.get(ym).push(r); });
+    for(const [ym, list] of byMonth){
+      const prev = await archReadMonth(ym);
+      if((archIndex[ym]||0) > prev.length) throw new Error(`El archivo ${ym} no se pudo leer completo. Se cancela para no perder datos.`);
+      const map = new Map(prev.map(r => [r.id, r])); list.forEach(r => map.set(r.id, r));
+      const merged = [...map.values()];
+      await window.storage.set(archKey(ym), JSON.stringify(merged), true);
+      const back = await archReadMonth(ym), ids = new Set(back.map(r => r.id));
+      if(back.length !== merged.length || !list.every(r => ids.has(r.id))) throw new Error(`No se pudo verificar el archivo ${ym}. No se quitó nada de la lista principal.`);
+      archIndex[ym] = merged.length; archCache.set(ym, merged);
+    }
+    await window.storage.set(ARCH_INDEX_KEY, JSON.stringify(archIndex), true);
+    const quitar = new Set(cand.map(r => r.id));
+    await commitRecordsChange(arr => { for(let i = arr.length - 1; i >= 0; i--){ if(quitar.has(arr[i].id) && arr[i].estado === 'CERRADO') arr.splice(i, 1); } });
+    archUpdateBtn(); render();
+    showToast(pendingRecords ? 'Archivado, pero la lista principal no se pudo guardar todavía' : `${cand.length} cerrados archivados`, pendingRecords ? 'error' : 'success');
+    return true;
+  }catch(e){
+    if(e && e.name === 'auth_expired') return false; // el aviso de sesión ya se muestra solo
+    alert('No se archivó nada (los registros siguen en la lista principal).\n\n' + (e && e.message ? e.message : e));
+    return false;
+  }
+}
+
+async function archReabrir(id, ym){
+  const rec = (archCache.get(ym) || []).find(r => r.id === id);
+  if(!rec) return;
+  if(!confirm(`¿Reabrir ${rec.serviceId || 'este registro'}? Vuelve a la lista principal en estado "En gestión".`)) return;
+  try{
+    await commitRecordsChange(arr => {
+      const ex = arr.find(x => x.id === id);
+      if(ex){ if(ex.estado === 'CERRADO'){ ex.estado = 'EN GESTION'; ex.cerradoAt = null; } }
+      else arr.push({ ...rec, estado:'EN GESTION', cerradoAt:null });
+    });
+    if(pendingRecords || !lastRecordsRaw || !lastRecordsRaw.includes('"id":' + JSON.stringify(id))) throw new Error('No se pudo guardar el registro reabierto. Sigue en el archivo.');
+    const rest = (await archReadMonth(ym)).filter(r => r.id !== id);
+    await window.storage.set(archKey(ym), JSON.stringify(rest), true);
+    archCache.set(ym, rest);
+    if(rest.length) archIndex[ym] = rest.length; else delete archIndex[ym];
+    await window.storage.set(ARCH_INDEX_KEY, JSON.stringify(archIndex), true);
+    archUpdateBtn(); render(); archRender();
+    showToast('Registro reabierto');
+  }catch(e){ if(!(e && e.name === 'auth_expired')) alert(e && e.message ? e.message : e); }
+}
+
+// ---- Panel "Archivo" ----
+let archEl = null, archShown = 100, archRows = [];
+function archFmt(ts){ return ts ? formatDateTime(ts) : '—'; }
+function archSearchText(r){ return Object.values(r).filter(v => typeof v === 'string' || typeof v === 'number').join(' ').toLowerCase(); }
+function archOpen(){
+  if(archEl){ archEl.remove(); archEl = null; }
+  if(!document.getElementById('archStyle')){
+    const st = document.createElement('style'); st.id = 'archStyle';
+    st.textContent = '#archOverlay{position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:12px}'
+      + '#archBox{width:min(1150px,100%);max-height:92vh;display:flex;flex-direction:column;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.5)}'
+      + '#archBox .ah{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line)}#archBox .ah h2{margin:0;font-size:16px;flex:1}'
+      + '#archBox .at{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--line-soft)}'
+      + '#archBox input,#archBox select{background:var(--panel-2);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:7px 10px;font:inherit}'
+      + '#archBox .as{padding:6px 16px;font-size:12.5px;color:var(--text-dim)}'
+      + '#archBox .aw{overflow:auto;padding:0 16px 14px}#archBox table{width:100%;border-collapse:collapse;font-size:12.5px}'
+      + '#archBox th{position:sticky;top:0;background:var(--panel-2);text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);white-space:nowrap}'
+      + '#archBox td{padding:6px 8px;border-bottom:1px solid var(--line-soft);vertical-align:top}#archBox td.ob{max-width:340px;white-space:pre-wrap;word-break:break-word}';
+    document.head.appendChild(st);
+  }
+  archEl = document.createElement('div'); archEl.id = 'archOverlay';
+  archEl.innerHTML = `<div id="archBox" role="dialog" aria-label="Archivo de cerrados">
+    <div class="ah"><h2>🗄 Archivo de cerrados</h2><button class="btn-ghost" id="archClose">Cerrar ✕</button></div>
+    <div class="at">
+      <input type="text" id="archQ" placeholder="Buscar Service ID, OTS, TP, texto…" style="flex:1;min-width:200px">
+      <select id="archMonth"></select>
+      <button class="btn-ghost" id="archXls">⬇ Exportar Excel</button>
+    </div>
+    <div class="at">
+      <span>Archivar cerrados de más de</span><input type="number" id="archDays" min="7" value="${ARCH_DEFAULT_DAYS}" style="width:72px"><span>días</span>
+      <button class="btn-primary" id="archGo"></button>
+    </div>
+    <div class="as" id="archStatus">Cargando archivo…</div>
+    <div class="aw" id="archTable"></div></div>`;
+  document.body.appendChild(archEl);
+  const $a = id => archEl.querySelector(id);
+  $a('#archClose').onclick = () => { archEl.remove(); archEl = null; };
+  archEl.addEventListener('mousedown', e => { if(e.target === archEl){ archEl.remove(); archEl = null; } });
+  const refreshGo = () => { const n = archCandidates(Math.max(7, +$a('#archDays').value || ARCH_DEFAULT_DAYS)).length; $a('#archGo').textContent = `Archivar ahora (${n} listos)`; $a('#archGo').disabled = !n; };
+  $a('#archDays').oninput = refreshGo; refreshGo();
+  $a('#archGo').onclick = async () => { if(await archivarCerrados(Math.max(7, +$a('#archDays').value || ARCH_DEFAULT_DAYS))){ await archLoadAll(); refreshGo(); } };
+  $a('#archQ').oninput = () => { archShown = 100; archRender(); };
+  $a('#archMonth').onchange = () => { archShown = 100; archRender(); };
+  $a('#archXls').onclick = archExport;
+  archLoadAll();
+}
+async function archLoadAll(){
+  const status = archEl && archEl.querySelector('#archStatus'); if(status) status.textContent = 'Cargando archivo…';
+  if(!(await archLoadIndex())){ if(status) status.textContent = 'No se pudo leer el archivo. Revisa la conexión e intenta de nuevo.'; return; }
+  const fails = [];
+  for(const ym of Object.keys(archIndex)){
+    if(archCache.has(ym)) continue;
+    try{ archCache.set(ym, await archReadMonth(ym)); }catch(e){ fails.push(ym); }
+  }
+  if(archEl){ archEl._fails = fails; archRender(); }
+}
+function archRender(){
+  if(!archEl) return;
+  const q = archEl.querySelector('#archQ').value.trim().toLowerCase(), sel = archEl.querySelector('#archMonth');
+  const months = Object.keys(archIndex).sort().reverse(), cur = sel.value || 'all';
+  sel.innerHTML = '<option value="all">Todos los meses</option>' + months.map(m => `<option value="${m}">${m === 'sin-fecha' ? 'Sin fecha' : m} (${archIndex[m]})</option>`).join('');
+  sel.value = months.includes(cur) ? cur : 'all';
+  const enMain = new Set(records.map(r => r.id)); // si ya está en la lista principal, no se muestra aquí
+  let rows = [];
+  (sel.value === 'all' ? months : [sel.value]).forEach(ym => (archCache.get(ym) || []).forEach(r => { if(!enMain.has(r.id)) rows.push({ ym, r }); }));
+  if(q) rows = rows.filter(x => archSearchText(x.r).includes(q));
+  rows.sort((a, b) => cierreTs(b.r) - cierreTs(a.r));
+  archRows = rows;
+  const f = archEl._fails || [];
+  archEl.querySelector('#archStatus').textContent = `${rows.length} registro(s)${q ? ' que coinciden' : ''} · ${archTotal()} archivados en ${months.length} mes(es)` + (f.length ? ` · ⚠ no se pudo leer: ${f.join(', ')}` : '');
+  const body = rows.slice(0, archShown).map(({ ym, r }) => `<tr>
+    <td><b>${escapeHtml(r.serviceId || '')}</b></td><td>${escapeHtml(r.gestor || '')}</td><td>${escapeHtml(r.proceso || r.categoria || '')}</td>
+    <td>${escapeHtml(r.otsSev1 || '')}</td><td>${escapeHtml(r.otsSev2 || '')}</td><td>${escapeHtml(r.tpChange || '')}</td>
+    <td>${escapeHtml(r.fechaAlarma || '')}</td><td>${escapeHtml(archFmt(r.cerradoAt))}</td>
+    <td class="ob">${escapeHtml(String(r.observacion || '').slice(0, 300))}</td>
+    <td><button class="btn-ghost" data-arch-reopen="${escapeHtml(r.id)}" data-arch-ym="${ym}">Reabrir</button></td></tr>`).join('');
+  archEl.querySelector('#archTable').innerHTML = rows.length
+    ? `<table><thead><tr><th>Service ID</th><th>Gestor</th><th>Proceso</th><th>OTS Sev 3</th><th>OTS Sev 4</th><th>TP Change</th><th>Fecha alarma</th><th>Cerrado</th><th>Observación</th><th></th></tr></thead><tbody>${body}</tbody></table>`
+      + (rows.length > archShown ? `<div style="padding:10px;text-align:center"><button class="btn-ghost" id="archMore">Mostrar más (${rows.length - archShown} restantes)</button></div>` : '')
+    : '<div style="padding:24px;text-align:center;color:var(--text-dim)">Nada archivado todavía o sin coincidencias.</div>';
+  archEl.querySelectorAll('[data-arch-reopen]').forEach(b => b.onclick = () => archReabrir(b.dataset.archReopen, b.dataset.archYm));
+  const more = archEl.querySelector('#archMore'); if(more) more.onclick = () => { archShown += 100; archRender(); };
+}
+function archExport(){
+  if(!window.XLSX){ showToast('No se pudo cargar el lector de Excel', 'error'); return; }
+  if(!archRows.length){ showToast('No hay registros para exportar', 'info'); return; }
+  const head = ['Service ID','Gestor','Proceso','Categoría','OTS Sev 3','OTS Sev 4','TP Change','Fecha alarma','Cerrado','Observación'];
+  const rows = archRows.map(({ r }) => [r.serviceId||'', r.gestor||'', r.proceso||'', r.categoria||'', r.otsSev1||'', r.otsSev2||'', r.tpChange||'', r.fechaAlarma||'', r.cerradoAt ? archFmt(r.cerradoAt) : '', r.observacion||'']);
+  const ws = XLSX.utils.aoa_to_sheet([head, ...rows]); ws['!cols'] = head.map(() => ({ wch: 18 }));
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Archivo');
+  XLSX.writeFile(wb, `archivo-cerrados-${archStamp()}.xlsx`);
+}
+document.getElementById('archBtn').addEventListener('click', archOpen);
 document.getElementById('shiftSummaryBtn').addEventListener('click', openShiftSummaryModal);
 document.getElementById('electricoExportBtn').addEventListener('click', exportElectricoToCSV);
 document.getElementById('refreshBtn').addEventListener('click', async ()=>{
@@ -7587,7 +7867,7 @@ buildElectricoFilterRow();
 });
 
 switchTab('ERICSSON');
-loadAll(true).then(offerPendingRestore);
+loadAll(true).then(offerPendingRestore).then(archLoadIndex);
 
 
 /* ---------------- CONSULTOR DE SITIOS (Id / Medidor / NIS) ---------------- */
