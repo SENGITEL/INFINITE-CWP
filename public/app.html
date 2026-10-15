@@ -553,6 +553,10 @@
   button.pill-aviso-bell-btn:hover{ filter:brightness(1.15); }
   /* Misma campana, pero en verde con palomita: el seguimiento ya fue atendido, aunque
      se sigue pudiendo solicitar otro haciendo clic de nuevo. */
+  .pill-aviso-bell-btn.pill-aviso-bell-nuevo{
+    background:transparent; color:var(--text-dim); border:1px dashed var(--line); opacity:.8;
+  }
+  .pill-aviso-bell-btn.pill-aviso-bell-nuevo:hover{ opacity:1; color:var(--danger); border-color:rgba(255,77,109,0.5); }
   .pill-aviso-bell-btn.pill-aviso-bell-atendido{
     background:var(--seguimiento-bg); color:var(--seguimiento); border-color:rgba(93,255,176,0.35);
   }
@@ -1886,7 +1890,12 @@ function ingresoBadgeHtml(serviceId){
 // cuanto se marque como atendido desde "Reportes Eléctricos" (sin dejar de poder
 // volver a solicitar otro seguimiento haciendo clic de nuevo).
 function avisoSeguimientoHtml(r){
-  if(!r.seguimientoSolicitado) return '';
+  // Aún sin ningún seguimiento: se muestra la campanita apagada para poder pedir el PRIMERO con un clic
+  // (antes solo se podía desde el formulario). No se ofrece en registros ya cerrados.
+  if(!r.seguimientoSolicitado){
+    if(!r.reporteElectrico || r.estado === 'CERRADO') return '';
+    return `<button type="button" class="pill-aviso-bell-btn pill-aviso-bell-nuevo" data-bell="${r.id}" title="Solicitar seguimiento del reporte eléctrico">🔔</button>`;
+  }
   const veces = r.seguimientoSolicitadoCount || 1;
   const atendido = !!r.seguimientoSolicitadoAtendido;
   const indicador = atendido ? '✓' : veces;
@@ -2684,6 +2693,12 @@ function pickReporteElectricoIds(groups){
     refresh();
     ov.querySelector('#repOk').focus();
   });
+}
+
+// Un registro "Único" lleva UN solo Service ID. Separa por coma, punto y coma, espacio, barra, | o "y"
+// para detectar cuando alguien pega o escribe varios en ese campo (para varios existe Masivo).
+function serviceIdTokens(raw){
+  return String(raw || '').split(/[\s,;|\/\\+&]+/).map(t => t.trim().toUpperCase()).filter(t => t && t !== 'Y');
 }
 
 function lookupSiteByName(name){
@@ -4118,7 +4133,7 @@ function buildRowHtml(r, extraClass){
       rec.seguimientoSolicitadoCount = (rec.seguimientoSolicitadoCount || 0) + 1;
       render();
       await saveRecords();
-      showToast(`Nuevo seguimiento solicitado (${rec.seguimientoSolicitadoCount})`);
+      showToast(rec.seguimientoSolicitadoCount === 1 ? 'Seguimiento solicitado' : `Nuevo seguimiento solicitado (${rec.seguimientoSolicitadoCount})`);
     });
   });
   queryAllIn(touchedRows, '[data-escalate]').forEach(btn=>{
@@ -5366,6 +5381,7 @@ function openModal(id, readOnly){
             <div id="serviceIdFieldBox">
               <label>Service ID</label>
               <input type="text" id="f_serviceId" list="siteIdList" value="${escapeHtml(r.serviceId)}" placeholder="PA213" />
+              <div id="serviceIdMultiHint"></div>
             </div>
             <div>
               <label>Nombre</label>
@@ -5742,6 +5758,25 @@ function openModal(id, readOnly){
   tipoMasivoBtn.onclick = ()=>{ tipoProceso='MASIVO'; refreshTipoProcesoUI(); regenerateTeams(false); };
 
   const serviceIdInput = document.getElementById('f_serviceId');
+  function updateServiceIdMultiHint(){
+    const box = document.getElementById('serviceIdMultiHint');
+    if(!box) return;
+    const t = serviceIdTokens(serviceIdInput.value);
+    if(t.length > 1){
+      box.innerHTML = `<div class="site-name-hint ingreso-alert">⚠ En "Único" solo va <b>un</b> Service ID (escribiste ${t.length}: ${escapeHtml(t.join(', '))}). Para varios usa <b>Masivo</b>. <button type="button" class="btn-ghost" id="serviceIdKeepFirst" style="padding:2px 8px;margin-left:6px;">Dejar solo ${escapeHtml(t[0])}</button></div>`;
+      serviceIdInput.style.borderColor = 'var(--danger)';
+      box.querySelector('#serviceIdKeepFirst').onclick = () => {
+        serviceIdInput.value = t[0];
+        serviceIdInput.dispatchEvent(new Event('input', { bubbles:true }));
+        serviceIdInput.focus();
+      };
+    } else {
+      box.innerHTML = '';
+      serviceIdInput.style.borderColor = '';
+    }
+  }
+  serviceIdInput.addEventListener('input', updateServiceIdMultiHint);
+  updateServiceIdMultiHint();
   const nombreInput = document.getElementById('f_nombre');
   const siteHintBox = document.getElementById('siteHintBox');
   const ingresoActivoHintBox = document.getElementById('ingresoActivoHintBox');
@@ -6353,6 +6388,12 @@ function openModal(id, readOnly){
       finalServiceId = (parseServiceIdList(changeIdsInput.value)[0] || '').toUpperCase();
       finalCategoria = '';
     } else {
+      const sidTokens = serviceIdTokens(document.getElementById('f_serviceId').value);
+      if(sidTokens.length > 1){
+        showToast(`En Único solo va un Service ID (escribiste ${sidTokens.length}: ${sidTokens.join(', ')}). Para varios usa Masivo.`, 'error');
+        serviceIdInput.focus();
+        return;
+      }
       finalServiceId = document.getElementById('f_serviceId').value.trim().toUpperCase();
       finalCategoria = '';
     }
