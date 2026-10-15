@@ -6378,9 +6378,15 @@ function openModal(id, readOnly){
 
     // ----- MODO ÚNICO (o edición de un registro existente) -----
     let finalServiceId, finalCategoria;
+    let extraMasivoIds = []; // Service ID adicionales escritos al editar en modo Masivo: cada uno crea su propio registro
     if(tipoProceso === 'MASIVO' && editingId){
       const activeCat = MASIVO_CATS.find(c => masivoActive[c.key]);
-      finalServiceId = activeCat ? activeCat.input.value.trim().toUpperCase() : r.serviceId;
+      // Antes se tomaba el texto completo del campo como UN solo Service ID, y al escribir varios
+      // (A, B, C) quedaban unidos en un solo registro. Ahora el primero se queda en este registro
+      // y los demás se crean como registros nuevos del mismo lote.
+      const idsEdicion = activeCat ? parseServiceIdList(activeCat.input.value) : [];
+      finalServiceId = idsEdicion.length ? idsEdicion[0] : (r.serviceId || '');
+      extraMasivoIds = idsEdicion.slice(1);
       finalCategoria = activeCat ? activeCat.label : (r.categoria || '');
     } else if(document.getElementById('f_estado').value === 'TP (CHANGE)'){
       // Al editar un registro TP (CHANGE) ya existente solo se conserva un Service ID
@@ -6491,12 +6497,55 @@ function openModal(id, readOnly){
       dependencias: currentDependencias.slice(),
       createdAt: r.createdAt || Date.now()
     };
-    // se aplica antes de cambiar de pestaña, para que el primer dibujado ya
-    // muestre el registro correcto (evita el "desaparece y luego aparece")
-    applyRecordsLocally(list => {
+
+    // Si en la edición en modo Masivo se escribieron varios Service ID, el primero se queda en
+    // este registro y cada uno de los demás se crea como registro nuevo del mismo lote.
+    const extraMasivoRecs = [];
+    if(tipoProceso === 'MASIVO' && extraMasivoIds.length){
+      if(!updated.masivoGroupId) updated.masivoGroupId = uid();
+      const siteMain = lookupSiteById(updated.serviceId);
+      if(siteMain && siteMain.siteName) updated.nombreSitio = siteMain.siteName;
+      updated.teams = generateTeamsText({
+        otsSev1: updated.otsSev1, serviceId: updated.serviceId, otsSev2: updated.otsSev2,
+        nombreSitio: updated.nombreSitio, categoria: updated.categoria, proceso: updated.proceso, observacion: updated.observacion
+      });
+      const estadoExtraBloqueado = updated.estado === 'CERRADO' && tieneOtsBloqueandoCierre({
+        tpChange: updated.tpChange, otsSev1: updated.otsSev1, otsSev2: updated.otsSev2,
+        otsSev1Cerrado: false, otsSev2Cerrado: false
+      });
+      const idsYaUsados = new Set([String(updated.serviceId||'').toLowerCase()]);
+      extraMasivoIds.forEach(sid=>{
+        if(idsYaUsados.has(sid.toLowerCase())) return;
+        idsYaUsados.add(sid.toLowerCase());
+        const site = lookupSiteById(sid);
+        const nombreSitio = site ? (site.siteName||'') : '';
+        extraMasivoRecs.push({
+          id: uid(), gestor, estado: estadoExtraBloqueado ? r.estado : updated.estado,
+          otsSev1: updated.otsSev1, fechaAlarma: updated.fechaAlarma, otsSev2: updated.otsSev2, tpChange: updated.tpChange,
+          serviceId: sid, nombreSitio, categoria: updated.categoria, tipoProceso: 'MASIVO', masivoGroupId: updated.masivoGroupId,
+          proceso: updated.proceso, observacion: updated.observacion,
+          vip: site ? (normalizeVip(site.vip) || 'NO') : 'NO',
+          seguridad: site ? (normalizeVip(site.seguridad) || '') : '',
+          teams: generateTeamsText({
+            otsSev1: updated.otsSev1, serviceId: sid, otsSev2: updated.otsSev2,
+            nombreSitio, categoria: updated.categoria, proceso: updated.proceso, observacion: updated.observacion
+          }),
+          reporteElectrico:false, reporteElectricoEnviado:false, reporteElectricoTexto:'', reporteElectricoProveedor:'', reporteElectricoEstado:'',
+          reporteElectricoCreatedAt:null, reporteElectricoSeguimientoAt:null,
+          seguimientoSolicitado:false, seguimientoSolicitadoAt:null, seguimientoSolicitadoAtendido:false, seguimientoSolicitadoCount:0,
+          seguimientoTexto:'',
+          createdAt: Date.now()
+        });
+      });
+    }
+    const aplicarEdicionEnLista = list => {
       const idx = list.findIndex(x=>x.id === updated.id);
       if(idx >= 0) list[idx] = updated; else list.push(updated);
-    });
+      extraMasivoRecs.forEach(nr => { if(!list.some(x=>x.id===nr.id)) list.push(nr); });
+    };
+    // se aplica antes de cambiar de pestaña, para que el primer dibujado ya
+    // muestre el registro correcto (evita el "desaparece y luego aparece")
+    applyRecordsLocally(aplicarEdicionEnLista);
     closeModal();
     // si el registro quedó en SALIDA (ya sea por el botón dedicado o porque se
     // cambió el estado manualmente en el formulario), el sub-filtro de la pestaña
@@ -6510,16 +6559,17 @@ function openModal(id, readOnly){
     if(cerroSiendoTpChange) tpChangeViewMode = 'cerrados';
     else if(updated.estado === 'TP (CHANGE)') tpChangeViewMode = 'activos';
     switchTab(openedFromTab === 'ELECTRICO' ? 'ELECTRICO' : (cerroSiendoTpChange ? 'TPCHANGE' : (updated.estado === 'CERRADO' ? 'CERRADOS' : ((updated.estado === 'INGRESO' || updated.estado === 'SALIDA') ? 'INGRESOS' : (updated.estado === 'TP (CHANGE)' ? 'TPCHANGE' : (gestor === 'HUAWEI' ? 'HUAWEI' : 'ERICSSON'))))));
-    showToast(editingId ? 'Cambios guardados' : 'Registro creado');
+    if(extraMasivoRecs.length){
+      showToast(`Cambios guardados · ${extraMasivoRecs.length} Service ID nuevo${extraMasivoRecs.length===1?'':'s'} agregado${extraMasivoRecs.length===1?'':'s'} al lote`);
+    } else {
+      showToast(editingId ? 'Cambios guardados' : 'Registro creado');
+    }
     if(updated.estado === 'CERRADO' && r.estado === 'TP (CHANGE)'){
       avisarOtsAsociadosSiAplica({ ...updated, estado: 'TP (CHANGE)' });
     }
     // la relectura/reconciliación con el servidor (para no pisar cambios de otro
     // gestor) pasa por debajo, sin bloquear la pantalla
-    commitRecordsChange(list => {
-      const idx = list.findIndex(x=>x.id === updated.id);
-      if(idx >= 0) list[idx] = updated; else list.push(updated);
-    }, { alreadyApplied: true });
+    commitRecordsChange(aplicarEdicionEnLista, { alreadyApplied: true });
   };
 }
 
