@@ -1208,7 +1208,7 @@
     display:none; align-items:center; gap:18px; flex-wrap:wrap;
     background:var(--warn-bg); border:1px solid var(--warn); color:var(--text);
     padding:11px 16px; border-radius:9px; font-family:var(--font-ui); font-size:12.5px;
-    pointer-events:auto; box-shadow:0 12px 32px -8px rgba(0,0,0,0.5); background:var(--panel-2);
+    margin-bottom:12px;
   }
   .pending-reports-banner.show{ display:flex; }
   .pending-reports-banner .prb-item{ display:flex; align-items:center; gap:7px; font-weight:700; }
@@ -1444,6 +1444,7 @@
 
     <!-- ELECTRICO REPORTS VIEW -->
     <div id="electricoView" style="display:none;">
+      <div class="pending-reports-banner" id="pendingReportsBanner"></div>
       <div class="filters">
         <button class="chip" id="electricoModeActivos" data-mode="activos">Activos <span class="count" id="countElectricoActivos" style="margin-left:4px;">0</span></button>
         <button class="chip" id="electricoModeCerrados" data-mode="cerrados">Cerrados <span class="count" id="countElectricoCerrados" style="margin-left:4px;">0</span></button>
@@ -1536,7 +1537,7 @@
 <datalist id="siteIdList"></datalist>
 
 <div class="toast" id="toast"></div>
-<div id="tpAlertStack" role="region" aria-live="assertive" aria-label="Alertas de TP Change y reportes"><div class="pending-reports-banner" id="pendingReportsBanner"></div></div>
+<div id="tpAlertStack" role="region" aria-live="assertive" aria-label="Alertas de TP Change"></div>
 
 <script>
 /* ---------------- ALMACENAMIENTO REAL EN SERVIDOR LOCAL ----------------
