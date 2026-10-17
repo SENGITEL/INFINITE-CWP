@@ -1167,9 +1167,9 @@
 
   /* Alertas de TP Change con el tiempo de cierre cumplido (tarjetas tipo notificación) */
   #tpAlertStack{
-    position:fixed; top:16px; right:16px; z-index:120;
+    position:fixed; bottom:72px; right:22px; z-index:120;
     display:flex; flex-direction:column; gap:10px;
-    width:min(370px, calc(100vw - 32px)); pointer-events:none;
+    width:min(370px, calc(100vw - 44px)); pointer-events:none; max-height:calc(100vh - 100px); overflow:hidden;
   }
   .tp-alert{
     pointer-events:auto; background:var(--panel-2); color:var(--text);
@@ -1178,7 +1178,7 @@
     box-shadow:0 12px 32px -8px rgba(0,0,0,0.5);
     animation: tp-alert-in .25s ease;
   }
-  @keyframes tp-alert-in{ from{ opacity:0; transform:translateX(24px); } to{ opacity:1; transform:none; } }
+  @keyframes tp-alert-in{ from{ opacity:0; transform:translateY(16px); } to{ opacity:1; transform:none; } }
   .tp-alert-head{ display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
   .tp-alert-title{ font-weight:700; color:var(--danger); line-height:1.3; }
   .tp-alert-x{ background:none; border:none; color:var(--text-faint); cursor:pointer; font-size:14px; line-height:1; padding:2px 4px; }
@@ -1208,7 +1208,7 @@
     display:none; align-items:center; gap:18px; flex-wrap:wrap;
     background:var(--warn-bg); border:1px solid var(--warn); color:var(--text);
     padding:11px 16px; border-radius:9px; font-family:var(--font-ui); font-size:12.5px;
-    margin-bottom:12px;
+    pointer-events:auto; box-shadow:0 12px 32px -8px rgba(0,0,0,0.5); background:var(--panel-2);
   }
   .pending-reports-banner.show{ display:flex; }
   .pending-reports-banner .prb-item{ display:flex; align-items:center; gap:7px; font-weight:700; }
@@ -1444,7 +1444,6 @@
 
     <!-- ELECTRICO REPORTS VIEW -->
     <div id="electricoView" style="display:none;">
-      <div class="pending-reports-banner" id="pendingReportsBanner"></div>
       <div class="filters">
         <button class="chip" id="electricoModeActivos" data-mode="activos">Activos <span class="count" id="countElectricoActivos" style="margin-left:4px;">0</span></button>
         <button class="chip" id="electricoModeCerrados" data-mode="cerrados">Cerrados <span class="count" id="countElectricoCerrados" style="margin-left:4px;">0</span></button>
@@ -1537,7 +1536,7 @@
 <datalist id="siteIdList"></datalist>
 
 <div class="toast" id="toast"></div>
-<div id="tpAlertStack" role="region" aria-live="assertive" aria-label="Alertas de TP Change"></div>
+<div id="tpAlertStack" role="region" aria-live="assertive" aria-label="Alertas de TP Change y reportes"><div class="pending-reports-banner" id="pendingReportsBanner"></div></div>
 
 <script>
 /* ---------------- ALMACENAMIENTO REAL EN SERVIDOR LOCAL ----------------
