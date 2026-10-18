@@ -1284,6 +1284,7 @@
   .core-filters{ display:flex; flex-direction:column; gap:8px; margin-bottom:10px; }
   .core-filters .row{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
   .core-filters .lbl{ font-family:'JetBrains Mono',monospace; font-size:10px; font-weight:700; color:var(--text-dim); width:52px; text-transform:uppercase; letter-spacing:.6px; }
+  .core-filters .lbl-sep{ width:auto; margin-left:14px; padding-left:14px; border-left:1px solid var(--line); }
   .core-filters .cchip{ font-family:'JetBrains Mono',monospace; font-size:11px; font-weight:700; padding:6px 12px; border-radius:20px; border:1px solid var(--line); background:var(--panel-2); color:var(--text-dim); cursor:pointer; white-space:nowrap; }
   .core-filters .cchip.on{ background:var(--accent); color:#04211d; border-color:transparent; }
   .pais-pill{ display:inline-block; font-family:'JetBrains Mono',monospace; font-size:11px; font-weight:800; padding:3px 8px; border-radius:5px; background:rgba(79,182,255,.14); color:#4fb6ff; }
@@ -1311,11 +1312,14 @@
   .tab.active[data-pais]{ background:var(--tab-color); color:#0a1220; border-color:var(--tab-color); box-shadow:0 -2px 12px -4px var(--tab-color); }
   .tab.active[data-pais] .count{ background:rgba(0,0,0,0.2); color:#0a1220; }
   body.domain-core .tab[data-tab="HUAWEI"], body.domain-core .tab[data-tab="ELECTRICO"], body.domain-core .tab[data-tab="SITES"], body.domain-core .tab[data-tab="INGRESOS"],
-  /* CORE · columnas no necesarias: Proceso (8), VIP (10), Elec. (11) y Reporte Eléctrico (12) */
+  /* CORE · columnas no necesarias: Proceso (8), VIP (10), Elec. (11), Reporte Eléctrico (12), Proveedor (13), Seguimiento Reporte Eléctrico (14) y Reporte Eléctrico resumen (19) */
   body.domain-core #casesView table th:nth-child(8), body.domain-core #casesView table td:nth-child(8),
   body.domain-core #casesView table th:nth-child(10), body.domain-core #casesView table td:nth-child(10),
   body.domain-core #casesView table th:nth-child(11), body.domain-core #casesView table td:nth-child(11),
-  body.domain-core #casesView table th:nth-child(12), body.domain-core #casesView table td:nth-child(12){ display:none !important; }
+  body.domain-core #casesView table th:nth-child(12), body.domain-core #casesView table td:nth-child(12),
+  body.domain-core #casesView table th:nth-child(13), body.domain-core #casesView table td:nth-child(13),
+  body.domain-core #casesView table th:nth-child(14), body.domain-core #casesView table td:nth-child(14),
+  body.domain-core #casesView table th:nth-child(19), body.domain-core #casesView table td:nth-child(19){ display:none !important; }
   body.domain-core #kpiBar, body.domain-core #mimBtn, body.domain-core #celdasBtn, body.domain-core #idqBtn{ display:none !important; }
 </style>
 </head>
@@ -2059,11 +2063,13 @@ const STORAGE_KEY = "bitacora-records" + CORE_SUFFIX;
 const STORAGE_KEY_SITES = "sitios-db";
 const CORE_PAISES = [['PA','Panamá'],['CR','Costa Rica'],['PR','Puerto Rico']];
 const CORE_EQUIPOS = ['PS CORE','VAS','NFVI','IMS','OTRO'];
-let corePaisFilter = '', coreEquipoFilter = '';
+let corePaisFilter = '', coreEquipoFilter = '', coreSegFilter = '';
 function corePaisNombre(c){ const p = CORE_PAISES.find(x=>x[0]===c); return p ? p[1] : (c||''); }
 function coreAreaCellHtml(r){
-  if(!r.pais && !r.equipo) return '<span class="empty-dash">—</span>';
-  return `${r.pais ? `<span class="pais-pill" title="${escapeHtml(corePaisNombre(r.pais))}">${escapeHtml(r.pais)}</span>` : ''}${r.equipo ? `<div style="margin-top:4px;font-size:12px;">${escapeHtml(r.equipo)}</div>` : ''}`;
+  // En la hoja principal el país lo da la pestaña; solo se muestra la sigla en Cerrados / TP Change.
+  const verPais = r.pais && typeof activeTab !== 'undefined' && activeTab !== 'ERICSSON';
+  if(!verPais && !r.equipo) return '<span class="empty-dash">—</span>';
+  return `${verPais ? `<span class="pais-pill" title="${escapeHtml(corePaisNombre(r.pais))}">${escapeHtml(r.pais)}</span>` : ''}${r.equipo ? `<div style="${verPais ? 'margin-top:4px;' : ''}font-size:12px;">${escapeHtml(r.equipo)}</div>` : ''}`;
 }
 /* ---------- CORE: escalamientos con destino, ticket, nota e historial ---------- */
 const CORE_ESC_DESTINOS = ['Proveedor (TAC)','Nivel 2 / Ingeniería','PS CORE','VAS','NFVI','IMS','Gerencia'];
@@ -2078,13 +2084,96 @@ function escHace(ts){
   if(h < 48) return `hace ${h} h`;
   return `hace ${Math.floor(h / 24)} d`;
 }
+const SEG_AMBAR_H = 4, SEG_ROJO_H = 8;
+function escUltimaActividad(r){
+  const h = Array.isArray(r.escalamientos) ? r.escalamientos.filter(x => x && x.tipo !== 'retorno') : [];
+  return h.length ? Math.max(...h.map(x => x.at || 0)) : 0;
+}
+// 'ok' | 'ambar' | 'rojo' | 'venc' (próximo seguimiento vencido) | '' (no aplica)
+function escSegNivel(r){
+  if(!IS_CORE || r.estado !== 'ESCALADO') return '';
+  if(r.proximoSeg && r.proximoSeg < Date.now()) return 'venc';
+  const t = escUltimaActividad(r);
+  if(!t) return '';
+  const hrs = (Date.now() - t) / 3600000;
+  return hrs >= SEG_ROJO_H ? 'rojo' : (hrs >= SEG_AMBAR_H ? 'ambar' : 'ok');
+}
 function escInfoHtml(r){
   if(!IS_CORE || r.estado !== 'ESCALADO') return '';
   const h = Array.isArray(r.escalamientos) ? r.escalamientos.filter(x => x && x.tipo !== 'retorno') : [];
-  const last = h[h.length - 1];
+  const esc = h.filter(x => x.tipo !== 'seguimiento');
+  const last = esc[esc.length - 1];
   if(!last) return '<div class="esc-info" style="font-size:11px;opacity:.7;margin-top:4px;">sin detalle</div>';
-  const tip = h.map(x => `${formatDateTime(x.at)} · ${x.destino}${x.ticket ? ' · ' + x.ticket : ''}${x.nota ? ' — ' + x.nota : ''}`).join('\n');
-  return `<div class="esc-info" style="font-size:11px;margin-top:4px;line-height:1.3;" title="${escapeHtml(tip)}">↑ ${escapeHtml(last.destino)}${last.ticket ? ' · ' + escapeHtml(last.ticket) : ''} · ${escHace(last.at)}${h.length > 1 ? ` <span style="opacity:.7">(${h.length})</span>` : ''}</div>`;
+  const tip = h.map(x => `${formatDateTime(x.at)} · ${x.tipo === 'seguimiento' ? 'Seguimiento' : x.destino}${x.ticket ? ' · ' + x.ticket : ''}${x.nota ? ' — ' + x.nota : ''}`).join('\n');
+  const nivel = escSegNivel(r);
+  const color = nivel === 'rojo' || nivel === 'venc' ? '#ff5a6e' : (nivel === 'ambar' ? '#ffc93d' : 'inherit');
+  const segs = h.filter(x => x.tipo === 'seguimiento');
+  const lastSeg = segs[segs.length - 1];
+  const segTxt = lastSeg ? `últ. seg. ${escHace(lastSeg.at)}` : `sin seguimiento · ${escHace(last.at)}`;
+  const prox = r.proximoSeg ? `<div style="opacity:.85;">${r.proximoSeg < Date.now() ? '⏰ seguimiento vencido' : '⏱ próx. ' + escapeHtml(formatDateTime(r.proximoSeg))}</div>` : '';
+  return `<div class="esc-info" style="font-size:11px;margin-top:4px;line-height:1.3;color:${color};" title="${escapeHtml(tip)}">↑ ${escapeHtml(last.destino)}${last.ticket ? ' · ' + escapeHtml(last.ticket) : ''}<div>${segTxt}${h.length > 1 ? ` <span style="opacity:.7">(${h.length})</span>` : ''}</div>${prox}</div>`;
+}
+function escDatetimeLocalToTs(v){ if(!v) return 0; const t = new Date(v).getTime(); return isNaN(t) ? 0 : t; }
+function openCoreSeguimientoModal(id){
+  const r = records.find(x => x.id === id);
+  if(!r) return;
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay';
+  overlay.innerHTML = `
+    <div class="modal">
+      <div class="modal-header">
+        <h2>Registrar seguimiento</h2>
+        <button type="button" class="modal-close-btn" id="segCloseX" title="Cerrar">✕</button>
+      </div>
+      <label>Seguimiento (pega el correo o escribe un resumen)</label>
+      <textarea id="segNota" rows="6" placeholder="Ej. TAC confirma que está analizando logs, nueva respuesta en 2 h"></textarea>
+      <label style="margin-top:12px;">Próximo seguimiento (opcional)</label>
+      <input type="datetime-local" id="segProx" value="${r.proximoSeg ? new Date(r.proximoSeg - new Date().getTimezoneOffset()*60000).toISOString().slice(0,16) : ''}" />
+      <label style="margin-top:12px;">Después de registrar</label>
+      <select id="segAccion">
+        <option value="solo">Mantener ESCALADO</option>
+        <option value="gestion">Volver a En gestión</option>
+        <option value="pendiente">Pasar a Pendiente por cierre</option>
+        <option value="cerrar">Cerrar registro</option>
+      </select>
+      <div class="modal-actions">
+        <div class="modal-actions-right">
+          <button type="button" class="btn-ghost" id="segCancel">Cancelar</button>
+          <button type="button" class="btn-primary" id="segOk">Registrar</button>
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  const close = () => overlay.remove();
+  overlay.addEventListener('click', e => { if(e.target === overlay) close(); });
+  overlay.querySelector('#segCloseX').addEventListener('click', close);
+  overlay.querySelector('#segCancel').addEventListener('click', close);
+  overlay.querySelector('#segOk').addEventListener('click', async () => {
+    const nota = overlay.querySelector('#segNota').value.trim();
+    const accion = overlay.querySelector('#segAccion').value;
+    const prox = escDatetimeLocalToTs(overlay.querySelector('#segProx').value);
+    if(!nota){ showToast('Escribe o pega el seguimiento', 'error'); return; }
+    if(accion === 'cerrar' && tieneOtsBloqueandoCierre(r)){
+      showToast('No se puede cerrar: tiene TP Change con OTS Sev 3/4 sin cerrar', 'error');
+      return;
+    }
+    const at = Date.now();
+    if(!Array.isArray(r.escalamientos)) r.escalamientos = [];
+    r.escalamientos.push({ at, tipo:'seguimiento', destino:'Seguimiento', ticket:'', nota });
+    escAppendLine(r, `Seguimiento ${escHora(at)} — ${nota}`);
+    if(accion === 'solo'){
+      if(prox) r.proximoSeg = prox; else delete r.proximoSeg;
+    } else {
+      delete r.proximoSeg;
+      if(accion === 'gestion') r.estado = 'EN GESTION';
+      else if(accion === 'pendiente') r.estado = 'PENDIENTE POR CIERRE';
+      else { r.estado = 'CERRADO'; r.cerradoAt = r.cerradoAt || at; }
+    }
+    close();
+    render();
+    await saveRecords();
+    showToast('Seguimiento registrado');
+  });
 }
 function escAppendLine(r, line){
   r.observacion = r.observacion ? (r.observacion + '\n' + line) : line;
@@ -2107,7 +2196,9 @@ function openCoreEscalateModal(ids, mode){
       <label>Escalado a</label>
       <select id="escDestino">${CORE_ESC_DESTINOS.map(d => `<option value="${escapeHtml(d)}">${escapeHtml(d)}</option>`).join('')}</select>
       <label style="margin-top:12px;">Ticket / SR (opcional)</label>
-      <input type="text" id="escTicket" placeholder="Ej. SR-4821" />`}
+      <input type="text" id="escTicket" placeholder="Ej. SR-4821" />
+      <label style="margin-top:12px;">Próximo seguimiento (opcional)</label>
+      <input type="datetime-local" id="escProx" />`}
       <label style="margin-top:12px;">${esRet ? 'Motivo (opcional)' : 'Nota (opcional)'}</label>
       <textarea id="escNota" rows="3"></textarea>
       <div class="modal-actions">
@@ -2127,15 +2218,18 @@ function openCoreEscalateModal(ids, mode){
     const destino = esRet ? '' : overlay.querySelector('#escDestino').value;
     const ticket = esRet ? '' : overlay.querySelector('#escTicket').value.trim();
     const at = Date.now();
+    const prox = esRet ? 0 : escDatetimeLocalToTs(overlay.querySelector('#escProx').value);
     recs.forEach(r => {
       if(!Array.isArray(r.escalamientos)) r.escalamientos = [];
       if(esRet){
+        delete r.proximoSeg;
         r.escalamientos.push({ at, tipo:'retorno', destino:'En gestión', ticket:'', nota });
         r.estado = 'EN GESTION';
         escAppendLine(r, `Devuelto a En gestión ${escHora(at)}${nota ? ' — ' + nota : ''}`);
       } else {
         r.escalamientos.push({ at, tipo:'escalado', destino, ticket, nota });
         r.estado = 'ESCALADO';
+        if(prox) r.proximoSeg = prox; else delete r.proximoSeg;
         escAppendLine(r, `Escalado a ${destino}${ticket ? ' (' + ticket + ')' : ''} ${escHora(at)}${nota ? ' — ' + nota : ''}`);
       }
     });
@@ -2215,6 +2309,15 @@ let editingId = null;
 let editingSiteId = null;
 let isModalOpen = false;
 let isInlineEditing = false; // true mientras el usuario tiene el foco en un campo editable de una tabla (evita que la sincronización automática le borre lo que está escribiendo
+let lastInlineInputAt = 0; // última vez que se tecleó en un campo editable de una tabla (cubre el hueco entre teclear y que el guardado termine)
+let saveEpoch = 0;          // sube cada vez que se guarda; sirve para descartar respuestas de sondeo que quedaron viejas
+// true si hay algo que la sincronización automática NO debe pisar ni repintar
+function hayEdicionEnCurso(){
+  if(isModalOpen || isInlineEditing || isCommitting || pendingRecords) return true;
+  if(Date.now() - lastInlineInputAt < 15000) return true;
+  const a = document.activeElement;
+  return !!(a && a.matches && a.matches('input.inline-input, textarea, select.inline-select'));
+}
 let isCommitting = false; // true mientras un guardado optimista está reconciliando con el servidor por debajo (evita que el sondeo de fondo, que llega con la versión vieja, pise el cambio que la persona acaba de ver aplicado en pantalla)
 // Set de Service ID que en este momento tienen un INGRESO activo (alguien entró al
 // sitio y todavía no registra la SALIDA). Se recalcula en cada renderInner() y se
@@ -2554,11 +2657,18 @@ async function loadAll(showLoadingText){
     showTableSkeleton();
   }
   try{
+    const epochAlIniciar = saveEpoch;
     const [resCases, resSites] = await Promise.all([
       window.storage.get(STORAGE_KEY, true).catch(()=>null),
       window.storage.get(STORAGE_KEY_SITES, true).catch(()=>null)
     ]);
     lastSyncAt = new Date();
+    // Sondeo en segundo plano: si mientras llegaba la respuesta la persona empezó a escribir, o se
+    // guardó algo (la respuesta ya quedó vieja), se descarta; el siguiente ciclo la traerá de nuevo.
+    // Antes se aplicaba igual y repintaba la tabla, borrando lo que se estaba escribiendo.
+    if(!showLoadingText && lastRecordsRaw !== null && (hayEdicionEnCurso() || epochAlIniciar !== saveEpoch)){
+      return;
+    }
 
     // Antes, si la petición fallaba (caída de red, cold-start de la función serverless,
     // un 500 pasajero, etc.), el .catch(()=>null) de arriba convertía la falla en `null`,
@@ -2621,6 +2731,7 @@ async function saveRecords(){
   // "await"), ningún sondeo puede colarse mientras este guardado esté en
   // vuelo, sin tener que tocar cada uno de esos lugares por separado.
   isCommitting = true;
+  saveEpoch++;
   // el indicador de arriba ahora también refleja TU guardado (no solo el sondeo en
   // segundo plano): "guardando…" mientras se escribe, "guardado" cuando termina.
   setSync('guardando…', 'saving');
@@ -2938,6 +3049,7 @@ function switchTab(tab){
   if(!IS_CORE) return;
   document.body.classList.add('domain-core');
   document.title = 'NOC CWP · Core';
+  setInterval(()=>{ if(!document.querySelector('.overlay') && !hayEdicionEnCurso()) { try{ render(); }catch(e){} } }, 5*60*1000);
   // Favicon propio de CORE: nodo central con enlaces (en lugar del ícono por defecto)
   (function(){
     const svg = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='14' fill='#0b1426'/>" +
@@ -2953,7 +3065,7 @@ function switchTab(tab){
   const eri = document.querySelector('.tab[data-tab="ERICSSON"]');
   if(eri && eri.firstChild) eri.firstChild.textContent = 'En gestión ';
   const ths = document.querySelectorAll('#casesTable thead th');
-  if(ths[1]) ths[1].textContent = 'País / Equipo';
+  if(ths[1]) ths[1].textContent = 'Team';
   if(ths[6]) ths[6].textContent = 'Elemento afectado';
   if(ths[5] && ths[5].firstChild) ths[5].firstChild.textContent = 'Alarma(s)';
 })();
@@ -2981,12 +3093,13 @@ function renderCoreFilters(base, showPais){
   }
   const cnt = (k, v) => base.filter(r => r[k] === v).length;
   const chip = (k, val, label, n) => `<button type="button" class="cchip ${((k==='pais'?corePaisFilter:coreEquipoFilter)===val)?'on':''}" data-core-k="${k}" data-core-v="${escapeHtml(val)}">${escapeHtml(label)} ${n}</button>`;
+  const segChip = (val, label, n) => `<button type="button" class="cchip ${coreSegFilter===val?'on':''}" data-core-k="seg" data-core-v="${val}">${escapeHtml(label)} ${n}</button>`;
   const equipos = CORE_EQUIPOS.concat([...new Set(base.map(r=>r.equipo).filter(e=>e && !CORE_EQUIPOS.includes(e)))]);
   box.innerHTML =
     (showPais ? `<div class="row"><span class="lbl">País</span>${chip('pais','','Todos',base.length)}${CORE_PAISES.map(p=>chip('pais',p[0],p[0]+' · '+p[1],cnt('pais',p[0]))).join('')}</div>` : '') +
-    `<div class="row"><span class="lbl">Equipo</span>${chip('equipo','','Todos',base.length)}${equipos.map(e=>chip('equipo',e,e,cnt('equipo',e))).join('')}</div>`;
+    `<div class="row"><span class="lbl">Team</span>${chip('equipo','','Todos',base.length)}${equipos.map(e=>chip('equipo',e,e,cnt('equipo',e))).join('')}<span class="lbl lbl-sep">Seguimiento</span>${segChip('','Todos',base.length)}${segChip('sin','Sin seguimiento ≥ '+SEG_AMBAR_H+' h',base.filter(r=>['ambar','rojo'].includes(escSegNivel(r))).length)}${segChip('venc','Vencido',base.filter(r=>escSegNivel(r)==='venc').length)}</div>`;
   box.querySelectorAll('.cchip').forEach(b => b.onclick = ()=>{
-    if(b.dataset.coreK === 'pais') corePaisFilter = b.dataset.coreV; else coreEquipoFilter = b.dataset.coreV;
+    if(b.dataset.coreK === 'pais') corePaisFilter = b.dataset.coreV; else if(b.dataset.coreK === 'seg') coreSegFilter = b.dataset.coreV; else coreEquipoFilter = b.dataset.coreV;
     render();
   });
 }
@@ -3496,6 +3609,12 @@ function reconcileTbody(tbody, html, keyOf){
       if(oldEl.outerHTML === newEl.outerHTML){
         return oldEl; // idéntica: se conserva el nodo tal cual, no se toca
       }
+      // La fila donde la persona tiene el cursor (campo de texto / lista) no se reemplaza: hacerlo
+      // destruiría el campo y lo que lleva escrito. Ya se guarda sola; se repinta en el siguiente render.
+      const act = document.activeElement;
+      if(act && oldEl.contains(act) && act.matches && act.matches('input.inline-input, textarea, select.inline-select')){
+        return oldEl;
+      }
     }
     touched.push(newEl); // nueva o cambiada: esta sí hay que engancharle listeners
     return newEl;
@@ -3668,6 +3787,8 @@ function renderInner(){
     renderCoreFilters(baseCore, activeTab !== 'ERICSSON');
     if(corePaisFilter) list = list.filter(r => r.pais === corePaisFilter);
     if(coreEquipoFilter) list = list.filter(r => r.equipo === coreEquipoFilter);
+    if(coreSegFilter === 'sin') list = list.filter(r => ['ambar','rojo'].includes(escSegNivel(r)));
+    else if(coreSegFilter === 'venc') list = list.filter(r => escSegNivel(r) === 'venc');
   }
   if(searchTerm.trim() !== ''){
     const q = searchTerm.toLowerCase();
@@ -3847,6 +3968,7 @@ function renderInner(){
     obsPopoverEl = pop;
     const textarea = pop.querySelector('#obsPopoverTextarea');
     textarea.addEventListener('focus', ()=>{ isInlineEditing = true; });
+    textarea.addEventListener('input', ()=>{ lastInlineInputAt = Date.now(); });
     textarea.addEventListener('blur', ()=>{ isInlineEditing = false; });
     textarea.focus();
     textarea.setSelectionRange(textarea.value.length, textarea.value.length);
@@ -4011,7 +4133,7 @@ function buildRowHtml(r, extraClass){
           <div class="estado-cell">
             <div>${badgeHtml(r.estado)}${escInfoHtml(r)}</div>
             <div class="estado-actions">
-              ${(IS_CORE && r.estado === 'ESCALADO') ? `<button type="button" class="action-btn action-reopen" data-unesc="${r.id}" title="Volver a En gestión">${ROW_ICONS.reopen}</button>` : ''}
+              ${(IS_CORE && r.estado === 'ESCALADO') ? `<button type="button" class="action-btn action-pending" data-seg="${r.id}" title="Registrar seguimiento">✉</button><button type="button" class="action-btn action-reopen" data-unesc="${r.id}" title="Volver a En gestión">${ROW_ICONS.reopen}</button>` : ''}
               ${(r.estado === 'INGRESO' || r.estado === 'SALIDA')
                 ? (r.estado === 'INGRESO' ? `<button type="button" class="action-btn action-salida" data-salida="${r.id}" title="Registrar salida">${ROW_ICONS.salida}</button>` : '')
                 : `
@@ -4344,6 +4466,12 @@ function buildRowHtml(r, extraClass){
       render();
       await saveRecords();
       showToast('Registro marcado como pendiente de cierre');
+    });
+  });
+  queryAllIn(touchedRows, '[data-seg]').forEach(btn=>{
+    btn.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      openCoreSeguimientoModal(btn.dataset.seg);
     });
   });
   queryAllIn(touchedRows, '[data-unesc]').forEach(btn=>{
@@ -4791,6 +4919,7 @@ function renderElectrico(){
   function trackInlineEditing(el){
     el.addEventListener('focus', ()=>{ isInlineEditing = true; });
     el.addEventListener('blur', ()=>{ isInlineEditing = false; });
+    el.addEventListener('input', ()=>{ lastInlineInputAt = Date.now(); });
   }
   queryAllIn(touchedRows, '[data-seguimientotexto]').forEach(input=>{
     trackInlineEditing(input);
@@ -4993,7 +5122,7 @@ function csvEscape(v){
 
 const REPORT_COLUMNS_CASE = [
   { label:'Gestor', get:r => r.gestor === 'HUAWEI' ? 'Huawei' : 'Ericsson' },
-  ...(IS_CORE ? [{ label:'País', get:r => corePaisNombre(r.pais) || '—' }, { label:'Equipo', get:r => r.equipo || '—' }, { label:'Elemento afectado', get:r => r.elemento || '—' }] : []),
+  ...(IS_CORE ? [{ label:'País', get:r => corePaisNombre(r.pais) || '—' }, { label:'Team', get:r => r.equipo || '—' }, { label:'Elemento afectado', get:r => r.elemento || '—' }] : []),
   { label:'Estado', get:r => r.estado || '—' },
   { label:'Service ID', get:r => r.serviceId || '—' },
   { label:'Nombre', get:r => r.nombreSitio || '—' },
@@ -5006,7 +5135,7 @@ const REPORT_COLUMNS_CASE = [
 
 const REPORT_COLUMNS_ELECTRICO = [
   { label:'Gestor', get:r => r.gestor === 'HUAWEI' ? 'Huawei' : 'Ericsson' },
-  ...(IS_CORE ? [{ label:'País', get:r => corePaisNombre(r.pais) || '—' }, { label:'Equipo', get:r => r.equipo || '—' }, { label:'Elemento afectado', get:r => r.elemento || '—' }] : []),
+  ...(IS_CORE ? [{ label:'País', get:r => corePaisNombre(r.pais) || '—' }, { label:'Team', get:r => r.equipo || '—' }, { label:'Elemento afectado', get:r => r.elemento || '—' }] : []),
   { label:'Estado', get:r => r.estado || '—' },
   { label:'Service ID', get:r => r.serviceId || '—' },
   { label:'Nombre', get:r => r.nombreSitio || '—' },
@@ -5358,7 +5487,7 @@ async function exportToCSV(){
   if(btn){ btn.disabled = true; btn.textContent = '⏳ Generando…'; }
   try{
     await loadSheetJS();
-    const headers = ['Estado',IS_CORE?'País / Equipo':'Gestor','OTS Sev 3','Fecha de la alarma','OTS Sev 4','TP Change','Service ID',IS_CORE?'Elemento afectado':'Nombre','Categoría','Proceso','Observación','VIP','Baterías','Generador','Reporte Eléctrico','N° Reporte Eléctrico','Proveedor','Seguimiento Reporte Eléctrico','Hora Seguimiento','Teams'];
+    const headers = ['Estado',IS_CORE?'Team':'Gestor','OTS Sev 3','Fecha de la alarma','OTS Sev 4','TP Change','Service ID',IS_CORE?'Elemento afectado':'Nombre','Categoría','Proceso','Observación','VIP','Baterías','Generador','Reporte Eléctrico','N° Reporte Eléctrico','Proveedor','Seguimiento Reporte Eléctrico','Hora Seguimiento','Teams'];
 
     // En la hoja de Huawei/Ericsson, los "TP (CHANGE)" van aparte en su propia hoja
     // (o, si se exporta desde la pestaña TP Change, ya vienen filtrados de una vez);
@@ -5609,7 +5738,7 @@ function openModal(id, readOnly){
       <div class="form-grid">
         ${IS_CORE ? `<div class="full core-form-grid">
           <div><label>País *</label><select id="f_pais"><option value="">Selecciona…</option>${CORE_PAISES.map(p=>`<option value="${p[0]}" ${(r.pais||corePaisFilter)===p[0]?'selected':''}>${p[1]}</option>`).join('')}</select></div>
-          <div><label>Equipo / Área *</label><select id="f_equipo"><option value="">Selecciona…</option>${CORE_EQUIPOS.map(e=>`<option value="${e}" ${r.equipo===e?'selected':''}>${e}</option>`).join('')}</select></div>
+          <div><label>Team *</label><select id="f_equipo"><option value="">Selecciona…</option>${CORE_EQUIPOS.map(e=>`<option value="${e}" ${r.equipo===e?'selected':''}>${e}</option>`).join('')}</select></div>
           <div><label>Elemento afectado</label><input type="text" id="f_elemento" value="${escapeHtml(r.elemento||'')}" placeholder="CSCF-SJU-01" /></div>
         </div>` : ''}
         <div class="full" style="${IS_CORE ? 'display:none;' : ''}">
@@ -7988,7 +8117,7 @@ let pollTimer = null;
 function startPolling(){
   if(pollTimer) return;
   pollTimer = setInterval(()=>{
-    if(!isModalOpen && !isInlineEditing && !isCommitting) loadAll(false);
+    if(!hayEdicionEnCurso()) loadAll(false);
   }, POLL_INTERVAL_MS);
 }
 function stopPolling(){
@@ -8005,13 +8134,13 @@ startPolling();
 document.addEventListener('visibilitychange', ()=>{
   if(document.visibilityState === 'visible'){
     startPolling();
-    if(!isModalOpen && !isInlineEditing && !isCommitting) loadAll(false);
+    if(!hayEdicionEnCurso()) loadAll(false);
   } else {
     stopPolling();
   }
 });
 window.addEventListener('focus', ()=>{
-  if(!isModalOpen && !isInlineEditing && !isCommitting) loadAll(false);
+  if(!hayEdicionEnCurso()) loadAll(false);
 });
 
 // tick the "actualizado hace Xs" label every second
