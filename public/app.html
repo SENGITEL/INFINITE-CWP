@@ -8422,7 +8422,11 @@ async function makeTableResizable(table){
   // Para #casesTable la "clave" de almacenamiento depende de la pestaña activa en el
   // momento de aplicar/guardar; para las demás tablas (propias de una sola vista) sigue
   // siendo fija, como antes.
-  const currentTableKey = ()=> isCasesTable ? `casesTable:${casesTableGroupKey()}` : table.id;
+  // En CORE hay columnas ocultas (ancho 0), así que sus anchos se guardan aparte para no
+  // corromper los de RAN. RAN conserva la clave original.
+  const currentTableKey = ()=> isCasesTable
+    ? (IS_CORE ? `casesTable:core:${casesTableGroupKey()}` : `casesTable:${casesTableGroupKey()}`)
+    : table.id;
   const ths = Array.from(table.querySelectorAll('thead th'));
   if(ths.length === 0) return;
   const defaults = DEFAULT_COL_WIDTHS[table.id] || null;
@@ -8438,7 +8442,11 @@ async function makeTableResizable(table){
       : null;
     if(widthsToApply){
       table.classList.add('col-resizable');
-      ths.forEach((th,i)=>{ if(widthsToApply[i]) th.style.width = widthsToApply[i] + 'px'; });
+      ths.forEach((th,i)=>{
+        let w = Number(widthsToApply[i]);
+        if(!(w > 0)) w = Number(defaults && defaults[i]);
+        if(w > 0) th.style.width = w + 'px'; else th.style.width = '';
+      });
     }
   }
 
@@ -8460,7 +8468,7 @@ async function makeTableResizable(table){
       // para que ninguna otra columna "salte" al iniciar el arrastre
       const startWidths = ths.map(t=> t.getBoundingClientRect().width);
       table.classList.add('col-resizable');
-      ths.forEach((t,i)=>{ t.style.width = startWidths[i] + 'px'; });
+      ths.forEach((t,i)=>{ if(startWidths[i] > 0) t.style.width = startWidths[i] + 'px'; }); // no tocar columnas ocultas
       resizer.classList.add('resizing');
       document.body.style.cursor = 'col-resize';
       document.body.style.userSelect = 'none';
@@ -8470,7 +8478,7 @@ async function makeTableResizable(table){
         const newWidth = Math.max(50, startWidths[idx] + delta);
         th.style.width = newWidth + 'px';
       }
-      function onUp(){
+      async function onUp(){
         document.removeEventListener('mousemove', onMove);
         document.removeEventListener('mouseup', onUp);
         resizer.classList.remove('resizing');
@@ -8480,7 +8488,13 @@ async function makeTableResizable(table){
         // para no mezclar el ancho de un grupo con el de otro.
         const tableKey = currentTableKey();
         if(tableKey){
-          const widths = ths.map(t=> Math.round(t.getBoundingClientRect().width));
+          const prev = await loadColumnWidths(tableKey);
+          const widths = ths.map((t,i)=>{
+            const w = Math.round(t.getBoundingClientRect().width);
+            if(w > 0) return w;
+            const old = prev && Number(prev[i]);
+            return old > 0 ? old : ((defaults && defaults[i]) || 100);
+          });
           saveColumnWidths(tableKey, widths);
         }
       }
