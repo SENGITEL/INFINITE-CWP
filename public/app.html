@@ -2063,6 +2063,54 @@ const STORAGE_KEY = "bitacora-records" + CORE_SUFFIX;
 const STORAGE_KEY_SITES = "sitios-db";
 const CORE_PAISES = [['PA','Panamá'],['CR','Costa Rica'],['PR','Puerto Rico']];
 const CORE_EQUIPOS = ['PS CORE','VAS','NFVI','IMS','OTRO'];
+
+/* ---------- CORE: catálogo de elementos -> Team (y notas operativas) ----------
+   Se usa para sugerir el Team al escribir/elegir el "Elemento afectado" y para mostrar avisos
+   (equipo no productivo, no operativo, a quién escalar, etc.). [nombre, team, nota] */
+const CORE_ELEMENTOS = {
+  PA: [
+    ['PAJF2CEE2','NFVI'],['PARA2CEE2','NFVI'],['PAJFSDIMB02','NFVI'],['PARASDIMA02','NFVI'],
+    ['PAJFDCGW03','NFVI'],['PAJFDCGW04','NFVI'],['PARADCGW03','NFVI'],['PARADCGW04','NFVI','Fuera de producción'],
+    ['JFEPG01','PS CORE'],['RAEPG01','PS CORE'],['PAJFEPG02','PS CORE','Fuera de producción'],['PARAEPG02','PS CORE'],
+    ['JFPGW01','PS CORE'],['RAPGW01','PS CORE'],['JFUPG01','PS CORE'],['BSP_JFUPG','PS CORE'],['BSP_JFPG','PS CORE'],
+    ['JFMME2','PS CORE'],['RAMME1','PS CORE'],['JFSAPC01','PS CORE'],['RASAPC01','PS CORE'],
+    ['JFAAA01','PS CORE'],['RAAAA01','PS CORE'],
+    ['DSCJF01','PS CORE'],['DSCJF01_BSP','PS CORE'],['DSCRA01','PS CORE'],['DSCRA01_BSP','PS CORE'],
+    ['JFDNS','PS CORE'],['JFIDNS01','PS CORE'],['RAIDNS01','PS CORE'],
+    ['JFEDNS01','IMS'],['RAEDNS01','IMS'],
+    ['JFCSCF01','IMS'],['JFMTAS01','IMS'],['JFSBG01','IMS'],['vHSS-JFVHSS1','IMS'],['vHSS-RAVHSS1','IMS'],
+    ['ADMGW2','VAS'],['DAMGW2','VAS'],['JFMGW2','VAS'],['RAMGW2','VAS'],['JFMGC3','VAS'],['RAMGC2','VAS'],['BSP_JFMGC3','VAS'],
+    ['JFSTP1','VAS'],['RASTP1','VAS'],['BSP_JFSTP1','VAS'],['BSP_RASTP1','VAS'],
+    ['JFHLRFE','VAS'],['RAHLRFE','VAS'],['BSP_RAHLRFE','VAS'],['RAEIRFEPL-1','VAS'],['RAEIRFEPL-2','VAS'],
+    ['CUDB_11','VAS'],['CUDB_21','VAS'],['BSP_CUDB_11','VAS'],['BSP_CUDB_21','VAS'],
+    ['ADBSC3','VAS'],['DABSC2','VAS'],['JFBSC2','VAS'],['ADRNC2','VAS'],['DARNC1','VAS'],['JFRNC4','VAS'],['RARNC3','VAS'],
+    ['JFBSP2','VAS']
+  ],
+  CR: [
+    ['CEE2SJLIN','NFVI'],['SJLINVDCGW01','NFVI'],['SJLINVDCGW02','NFVI'],['SJLINCEE01','NFVI'],['SJLINSDIM01','NFVI'],
+    ['CRLIIBCF01','IMS','No está en producción'],['CRLICSCF01','IMS'],['CRLIIMSDNS01','IMS'],['CRLIMTAS01','IMS'],['CRLIPCSCF01','IMS'],
+    ['PAPPMTAS03','IMS'],['PAPPCSCF03','IMS'],['PAPPIMSiDNS03','IMS'],['PAPPPCSCF03','IMS'],
+    ['SJLIN1HSS','IMS'],['SJLIN1USCDB','IMS'],['SJLIN2HSS','IMS'],['SJLIN2USCDB','IMS'],
+    ['SJLIN1M','VAS'],['CRLIMSC01','VAS','Ya reporta alarmas'],['SJLIN1G','VAS'],['SJLIN2G','VAS'],['SJLINSBC1','VAS'],
+    ['CGPUDB1','VAS'],['CGPUDB2','VAS','No comercial'],
+    ['CRLIDRA01','PS CORE','Operativo'],['CRLIMME01','PS CORE'],['SJLINVEPGC01','PS CORE'],['SJLINVEPGC02','PS CORE'],
+    ['SJLINVEPGU01','PS CORE','Equipo no productivo: omitir alarmas'],['SJLINVEPGU02','PS CORE','Equipo no productivo: omitir alarmas'],
+    ['SJLINIDNS','PS CORE'],['CRINELS01','PS CORE','Escalar con Michael Rodríguez'],['DPI Ericsson Stats','PS CORE','Monitoreo en PRTG'],
+    ['CRLICCD01','PS CORE','Equipo no productivo: omitir alarmas'],['CG2','PS CORE'],
+    ['SJCGP2','PS CORE','Ya no se escalan alarmas de este equipo'],['SJDNS01','PS CORE'],['SJDNS02','PS CORE'],
+    ['SJSGSN01','PS CORE','No operativo'],['SJUGW01','PS CORE','No operativo'],
+    ['CRLISDI3','OTRO','No operativo']
+  ],
+  PR: []
+};
+const _normEl = v => String(v||'').trim().toUpperCase().replace(/\s+/g,'');
+function coreElementoInfo(pais, nombre){
+  const k = _normEl(nombre);
+  if(!k) return null;
+  const lista = (pais && CORE_ELEMENTOS[pais]) ? CORE_ELEMENTOS[pais] : Object.values(CORE_ELEMENTOS).flat();
+  const hit = lista.find(e => _normEl(e[0]) === k);
+  return hit ? { nombre:hit[0], team:hit[1], nota:hit[2] || '' } : null;
+}
 let corePaisFilter = '', coreEquipoFilter = '', coreSegFilter = '';
 function corePaisNombre(c){ const p = CORE_PAISES.find(x=>x[0]===c); return p ? p[1] : (c||''); }
 function coreAreaCellHtml(r){
@@ -2329,6 +2377,16 @@ let tpChangeValueBySite = new Map();
 let searchTerm = "";
 let sortColumn = null;   // 'estado' | 'fechaAlarma' | 'serviceId' | null (null = orden por defecto)
 let sortDirection = 'asc'; // 'asc' | 'desc'
+// Un masivo con más de 2 OTS distintas (Sev 3 o Sev 4) siempre se muestra extendido y no se puede contraer.
+function masivoOtsDistintas(gkey){
+  const set = new Set();
+  records.forEach(r=>{
+    if(getMasivoGroupKey(r) !== gkey) return;
+    [r.otsSev1, r.otsSev2].forEach(v => { const t = String(v||'').trim(); if(t) set.add(t); });
+  });
+  return set.size;
+}
+function masivoForzadoExpandido(gkey){ return masivoOtsDistintas(gkey) > 2; }
 let expandedMasivoGroups = new Set(); // ids de grupos MASIVO que el usuario expandió manualmente (contraídos por defecto)
 let escalateMenuEl = null; // referencia al menú flotante de "Escalar" actualmente abierto (si hay uno)
 let idStatusMenuEl = null; // referencia al menú flotante de "Estado eléctrico del Id" actualmente abierto (si hay uno)
@@ -3652,6 +3710,11 @@ function migrateCoreLegacy(){
   records.forEach(r=>{
     if(CORE_EQUIPO_LEGACY[r.equipo]) r.equipo = CORE_EQUIPO_LEGACY[r.equipo];
     if(r.estado === 'ESCALADO A IP' || r.estado === 'ESCALADO A DWDM') r.estado = 'ESCALADO';
+    // Team vacío u "OTRO" con un elemento conocido del catálogo: se completa con el Team del catálogo
+    if(r.elemento && (!r.equipo || r.equipo === 'OTRO')){
+      const info = coreElementoInfo(r.pais, r.elemento);
+      if(info && info.team !== 'OTRO') r.equipo = info.team;
+    }
   });
 }
 function render(){
@@ -4341,10 +4404,11 @@ function buildRowHtml(r, extraClass){
       seenGroups.add(gkey);
       const groupRecords = list.filter(x => getMasivoGroupKey(x) === gkey);
       if(groupRecords.length > 1){
-        if(expandedMasivoGroups.has(gkey)){
+        const forzado = masivoForzadoExpandido(gkey);
+        if(forzado || expandedMasivoGroups.has(gkey)){
           const tkPending = planTkClose(groupRecords).full;
           const closeBtnHtml = tkPending.length > 0 ? `<button type="button" class="close-tk-btn" data-close-tk-group="${gkey}" title="Cerrar todos los registros que comparten TK con un solo clic">${ROW_ICONS.check} Cerrar por TK (${tkPending.length})</button>` : '';
-          rowsHtml.push(`<tr class="masivo-collapse-row" data-group="${gkey}"><td colspan="20"><button type="button" class="masivo-toggle-btn" data-toggle-group="${gkey}">▾ Contraer grupo (${groupRecords.length} Service ID)</button>${closeBtnHtml}</td></tr>`);
+          rowsHtml.push(`<tr class="masivo-collapse-row" data-group="${gkey}"><td colspan="20">${forzado ? `<span class="masivo-toggle-btn" style="cursor:default;" title="Tiene más de 2 OTS (Sev 3 / Sev 4): se mantiene extendido">▾ Grupo extendido · ${masivoOtsDistintas(gkey)} OTS (${groupRecords.length} Service ID)</span>` : `<button type="button" class="masivo-toggle-btn" data-toggle-group="${gkey}">▾ Contraer grupo (${groupRecords.length} Service ID)</button>`}${closeBtnHtml}</td></tr>`);
           groupRecords.forEach(gr => rowsHtml.push(buildRowHtml(gr, 'masivo-child')));
         } else {
           rowsHtml.push(buildMasivoGroupRowHtml(gkey, groupRecords));
@@ -5739,7 +5803,7 @@ function openModal(id, readOnly){
         ${IS_CORE ? `<div class="full core-form-grid">
           <div><label>País *</label><select id="f_pais"><option value="">Selecciona…</option>${CORE_PAISES.map(p=>`<option value="${p[0]}" ${(r.pais||corePaisFilter)===p[0]?'selected':''}>${p[1]}</option>`).join('')}</select></div>
           <div><label>Team *</label><select id="f_equipo"><option value="">Selecciona…</option>${CORE_EQUIPOS.map(e=>`<option value="${e}" ${r.equipo===e?'selected':''}>${e}</option>`).join('')}</select></div>
-          <div><label>Elemento afectado</label><input type="text" id="f_elemento" value="${escapeHtml(r.elemento||'')}" placeholder="CSCF-SJU-01" /></div>
+          <div><label>Elemento afectado</label><input type="text" id="f_elemento" list="f_elemento_list" autocomplete="off" value="${escapeHtml(r.elemento||'')}" placeholder="Escribe o elige el elemento" /><datalist id="f_elemento_list"></datalist><div id="f_elemento_hint" class="hint" style="margin-top:4px;font-size:12px;"></div></div>
         </div>` : ''}
         <div class="full" style="${IS_CORE ? 'display:none;' : ''}">
           <label>Gestor</label>
@@ -5754,6 +5818,10 @@ function openModal(id, readOnly){
             ${ESTADOS.map(e=>`<option value="${e}" ${r.estado===e?'selected':''}>${e}</option>`).join('')}
           </select>
         </div>
+        ${IS_CORE ? `<div id="fieldFechaAlarma">
+          <label>Fecha de la alarma</label>
+          <input type="date" id="f_fecha" value="${escapeHtml(r.fechaAlarma)}" />
+        </div>` : ''}
         <div class="full" id="fieldTipoProceso">
           <label>Tipo de proceso</label>
           <div class="tipo-toggle">
@@ -5853,10 +5921,10 @@ function openModal(id, readOnly){
           <label>OTS Sev 3</label>
           <input type="text" id="f_otsSev1" value="${escapeHtml(r.otsSev1)}" inputmode="numeric" />
         </div>
-        <div id="fieldFechaAlarma">
+        ${IS_CORE ? '' : `<div id="fieldFechaAlarma">
           <label>Fecha de la alarma</label>
           <input type="date" id="f_fecha" value="${escapeHtml(r.fechaAlarma)}" />
-        </div>
+        </div>`}
         <div id="fieldOtsSev2">
           <label>OTS Sev 4</label>
           <input type="text" id="f_otsSev2" value="${escapeHtml(r.otsSev2)}" inputmode="numeric" />
@@ -5950,6 +6018,34 @@ function openModal(id, readOnly){
     });
     inp.value = '';
     renderAlarmas(true);
+  }
+  // CORE: lista de elementos según el país, Team sugerido y avisos del catálogo
+  if(IS_CORE && document.getElementById('f_elemento')){
+    const elIn = document.getElementById('f_elemento'), paisSel = document.getElementById('f_pais'),
+          teamSel = document.getElementById('f_equipo'), dl = document.getElementById('f_elemento_list'),
+          hint = document.getElementById('f_elemento_hint');
+    const refreshList = ()=>{
+      const p = paisSel ? paisSel.value : '';
+      const lista = p && CORE_ELEMENTOS[p] ? CORE_ELEMENTOS[p] : Object.values(CORE_ELEMENTOS).flat();
+      dl.innerHTML = lista.map(e => `<option value="${escapeHtml(e[0])}">${escapeHtml(e[1])}${e[2] ? ' · ' + escapeHtml(e[2]) : ''}</option>`).join('');
+    };
+    const onElemento = (soloAviso)=>{
+      let info = coreElementoInfo(paisSel ? paisSel.value : '', elIn.value);
+      // sin país elegido: si el elemento existe en un solo país, se completa también el país
+      if(!info && paisSel && !paisSel.value){
+        const hits = Object.keys(CORE_ELEMENTOS).map(c => [c, coreElementoInfo(c, elIn.value)]).filter(x => x[1]);
+        if(hits.length === 1){ paisSel.value = hits[0][0]; info = hits[0][1]; refreshList(); }
+      }
+      if(!info){ hint.textContent = ''; return; }
+      if(!soloAviso && teamSel && info.team && teamSel.value !== info.team){ teamSel.value = info.team; }
+      hint.innerHTML = `Team sugerido: <b>${escapeHtml(info.team)}</b>${info.nota ? ` · <span style="color:var(--warn);">⚠ ${escapeHtml(info.nota)}</span>` : ''}`;
+    };
+    refreshList(); onElemento(true);
+    if(!readOnly){
+      if(paisSel) paisSel.addEventListener('change', ()=>{ refreshList(); onElemento(true); });
+      elIn.addEventListener('input', ()=>onElemento());
+      elIn.addEventListener('change', ()=>onElemento());
+    }
   }
   if(!readOnly && document.getElementById('f_alarmaAdd')){
     document.getElementById('f_alarmaAdd').onclick = addAlarmasFromInput;
