@@ -1293,7 +1293,10 @@
   #fieldAlarmas{ display:none; }
   body.domain-core #fieldAlarmas{ display:block; }
   body.domain-core #overlay #fieldTipoProceso, body.domain-core #overlay #unicoBox, body.domain-core #overlay #masivoBox,
-  body.domain-core #overlay #fieldTpChange, body.domain-core #overlay #tkHint, body.domain-core #overlay #fieldProceso,
+  body.domain-core #overlay #tkHint,
+  /* TP Change (y su Proceso/Impacto) solo se ocultan cuando el estado NO es TP (CHANGE) */
+  body.domain-core #overlay:not(:has(#f_estado option:checked[value="TP (CHANGE)"])) #fieldTpChange,
+  body.domain-core #overlay:not(:has(#f_estado option:checked[value="TP (CHANGE)"])) #fieldProceso,
   body.domain-core #overlay #dependenciasBox, body.domain-core #overlay #fieldReporteElectrico, body.domain-core #overlay #seguimientoBox{ display:none !important; }
   .alarma-chip{ display:inline-flex; align-items:center; gap:6px; font-family:'JetBrains Mono',monospace; font-size:12px; font-weight:700; padding:5px 6px 5px 10px; border-radius:16px; background:rgba(255,90,110,.14); color:#ff8a98; border:1px solid rgba(255,90,110,.35); }
   .alarma-chip button{ background:none; border:none; color:inherit; cursor:pointer; font-size:14px; line-height:1; padding:0 4px; }
@@ -1308,6 +1311,11 @@
   .tab.active[data-pais]{ background:var(--tab-color); color:#0a1220; border-color:var(--tab-color); box-shadow:0 -2px 12px -4px var(--tab-color); }
   .tab.active[data-pais] .count{ background:rgba(0,0,0,0.2); color:#0a1220; }
   body.domain-core .tab[data-tab="HUAWEI"], body.domain-core .tab[data-tab="ELECTRICO"], body.domain-core .tab[data-tab="SITES"], body.domain-core .tab[data-tab="INGRESOS"],
+  /* CORE · columnas no necesarias: Proceso (8), VIP (10), Elec. (11) y Reporte Eléctrico (12) */
+  body.domain-core #casesView table th:nth-child(8), body.domain-core #casesView table td:nth-child(8),
+  body.domain-core #casesView table th:nth-child(10), body.domain-core #casesView table td:nth-child(10),
+  body.domain-core #casesView table th:nth-child(11), body.domain-core #casesView table td:nth-child(11),
+  body.domain-core #casesView table th:nth-child(12), body.domain-core #casesView table td:nth-child(12){ display:none !important; }
   body.domain-core #kpiBar, body.domain-core #mimBtn, body.domain-core #celdasBtn, body.domain-core #idqBtn{ display:none !important; }
 </style>
 </head>
@@ -2057,6 +2065,87 @@ function coreAreaCellHtml(r){
   if(!r.pais && !r.equipo) return '<span class="empty-dash">—</span>';
   return `${r.pais ? `<span class="pais-pill" title="${escapeHtml(corePaisNombre(r.pais))}">${escapeHtml(r.pais)}</span>` : ''}${r.equipo ? `<div style="margin-top:4px;font-size:12px;">${escapeHtml(r.equipo)}</div>` : ''}`;
 }
+/* ---------- CORE: escalamientos con destino, ticket, nota e historial ---------- */
+const CORE_ESC_DESTINOS = ['Proveedor (TAC)','Nivel 2 / Ingeniería','PS CORE','VAS','NFVI','IMS','Gerencia'];
+function escHora(ts){
+  return new Date(ts).toLocaleTimeString('es-CO', { hour:'2-digit', minute:'2-digit', hour12:false });
+}
+function escHace(ts){
+  const m = Math.max(0, Math.round((Date.now() - ts) / 60000));
+  if(m < 1) return 'hace un momento';
+  if(m < 60) return `hace ${m} min`;
+  const h = Math.floor(m / 60);
+  if(h < 48) return `hace ${h} h`;
+  return `hace ${Math.floor(h / 24)} d`;
+}
+function escInfoHtml(r){
+  if(!IS_CORE || r.estado !== 'ESCALADO') return '';
+  const h = Array.isArray(r.escalamientos) ? r.escalamientos.filter(x => x && x.tipo !== 'retorno') : [];
+  const last = h[h.length - 1];
+  if(!last) return '<div class="esc-info" style="font-size:11px;opacity:.7;margin-top:4px;">sin detalle</div>';
+  const tip = h.map(x => `${formatDateTime(x.at)} · ${x.destino}${x.ticket ? ' · ' + x.ticket : ''}${x.nota ? ' — ' + x.nota : ''}`).join('\n');
+  return `<div class="esc-info" style="font-size:11px;margin-top:4px;line-height:1.3;" title="${escapeHtml(tip)}">↑ ${escapeHtml(last.destino)}${last.ticket ? ' · ' + escapeHtml(last.ticket) : ''} · ${escHace(last.at)}${h.length > 1 ? ` <span style="opacity:.7">(${h.length})</span>` : ''}</div>`;
+}
+function escAppendLine(r, line){
+  r.observacion = r.observacion ? (r.observacion + '\n' + line) : line;
+  r.teams = r.teams ? (r.teams + '\n' + line) : line;
+}
+// mode 'escalar' | 'retorno'. ids: registros afectados.
+function openCoreEscalateModal(ids, mode){
+  const recs = ids.map(id => records.find(r => r.id === id)).filter(Boolean);
+  if(!recs.length) return;
+  const esRet = mode === 'retorno';
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay';
+  overlay.innerHTML = `
+    <div class="modal">
+      <div class="modal-header">
+        <h2>${esRet ? 'Volver a En gestión' : 'Escalar'}${recs.length > 1 ? ` (${recs.length} registros)` : ''}</h2>
+        <button type="button" class="modal-close-btn" id="escCloseX" title="Cerrar">✕</button>
+      </div>
+      ${esRet ? '' : `
+      <label>Escalado a</label>
+      <select id="escDestino">${CORE_ESC_DESTINOS.map(d => `<option value="${escapeHtml(d)}">${escapeHtml(d)}</option>`).join('')}</select>
+      <label style="margin-top:12px;">Ticket / SR (opcional)</label>
+      <input type="text" id="escTicket" placeholder="Ej. SR-4821" />`}
+      <label style="margin-top:12px;">${esRet ? 'Motivo (opcional)' : 'Nota (opcional)'}</label>
+      <textarea id="escNota" rows="3"></textarea>
+      <div class="modal-actions">
+        <div class="modal-actions-right">
+          <button type="button" class="btn-ghost" id="escCancel">Cancelar</button>
+          <button type="button" class="btn-primary" id="escOk">${esRet ? 'Volver a gestión' : 'Escalar'}</button>
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  const close = () => overlay.remove();
+  overlay.addEventListener('click', e => { if(e.target === overlay) close(); });
+  overlay.querySelector('#escCloseX').addEventListener('click', close);
+  overlay.querySelector('#escCancel').addEventListener('click', close);
+  overlay.querySelector('#escOk').addEventListener('click', async () => {
+    const nota = overlay.querySelector('#escNota').value.trim();
+    const destino = esRet ? '' : overlay.querySelector('#escDestino').value;
+    const ticket = esRet ? '' : overlay.querySelector('#escTicket').value.trim();
+    const at = Date.now();
+    recs.forEach(r => {
+      if(!Array.isArray(r.escalamientos)) r.escalamientos = [];
+      if(esRet){
+        r.escalamientos.push({ at, tipo:'retorno', destino:'En gestión', ticket:'', nota });
+        r.estado = 'EN GESTION';
+        escAppendLine(r, `Devuelto a En gestión ${escHora(at)}${nota ? ' — ' + nota : ''}`);
+      } else {
+        r.escalamientos.push({ at, tipo:'escalado', destino, ticket, nota });
+        r.estado = 'ESCALADO';
+        escAppendLine(r, `Escalado a ${destino}${ticket ? ' (' + ticket + ')' : ''} ${escHora(at)}${nota ? ' — ' + nota : ''}`);
+      }
+    });
+    close();
+    render();
+    await saveRecords();
+    showToast(esRet ? 'Registro devuelto a En gestión' : `${recs.length} registro(s) escalado(s) a ${destino}`);
+  });
+}
+
 function coreFormFields(){
   if(!IS_CORE) return {};
   const v = id => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
@@ -2849,6 +2938,18 @@ function switchTab(tab){
   if(!IS_CORE) return;
   document.body.classList.add('domain-core');
   document.title = 'NOC CWP · Core';
+  // Favicon propio de CORE: nodo central con enlaces (en lugar del ícono por defecto)
+  (function(){
+    const svg = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='14' fill='#0b1426'/>" +
+      "<g stroke='#4fb6ff' stroke-width='3.5' stroke-linecap='round'><path d='M32 32L14 16M32 32L50 16M32 32L14 48M32 32L50 48'/></g>" +
+      "<g fill='#4fb6ff'><circle cx='14' cy='16' r='5'/><circle cx='50' cy='16' r='5'/><circle cx='14' cy='48' r='5'/><circle cx='50' cy='48' r='5'/></g>" +
+      "<circle cx='32' cy='32' r='11' fill='#ff5a6e'/><circle cx='32' cy='32' r='5' fill='#0b1426'/></svg>";
+    const href = 'data:image/svg+xml,' + encodeURIComponent(svg);
+    document.querySelectorAll('link[rel~="icon"]').forEach(l => l.remove());
+    const l = document.createElement('link');
+    l.rel = 'icon'; l.type = 'image/svg+xml'; l.href = href;
+    document.head.appendChild(l);
+  })();
   const eri = document.querySelector('.tab[data-tab="ERICSSON"]');
   if(eri && eri.firstChild) eri.firstChild.textContent = 'En gestión ';
   const ths = document.querySelectorAll('#casesTable thead th');
@@ -3611,6 +3712,13 @@ function renderInner(){
   const escDestinoLabel = d => d === 'ESCALADO A IP' ? 'a IP' : (d === 'ESCALADO A DWDM' ? 'a DWDM' : '');
   function showEscalateMenu(btn, id, groupKey){
     closeEscalateMenu();
+    if(IS_CORE){
+      const ids = groupKey
+        ? records.filter(r => getMasivoGroupKey(r) === groupKey && puedeEscalar(r)).map(r => r.id)
+        : [id];
+      openCoreEscalateModal(ids, 'escalar');
+      return;
+    }
     const rect = btn.getBoundingClientRect();
     const menu = document.createElement('div');
     menu.className = 'escalate-menu';
@@ -3901,8 +4009,9 @@ function buildRowHtml(r, extraClass){
       <tr class="est-${cls}${extraClass ? ' ' + extraClass : ''}" data-id="${r.id}">
         <td>
           <div class="estado-cell">
-            ${badgeHtml(r.estado)}
+            <div>${badgeHtml(r.estado)}${escInfoHtml(r)}</div>
             <div class="estado-actions">
+              ${(IS_CORE && r.estado === 'ESCALADO') ? `<button type="button" class="action-btn action-reopen" data-unesc="${r.id}" title="Volver a En gestión">${ROW_ICONS.reopen}</button>` : ''}
               ${(r.estado === 'INGRESO' || r.estado === 'SALIDA')
                 ? (r.estado === 'INGRESO' ? `<button type="button" class="action-btn action-salida" data-salida="${r.id}" title="Registrar salida">${ROW_ICONS.salida}</button>` : '')
                 : `
@@ -4235,6 +4344,12 @@ function buildRowHtml(r, extraClass){
       render();
       await saveRecords();
       showToast('Registro marcado como pendiente de cierre');
+    });
+  });
+  queryAllIn(touchedRows, '[data-unesc]').forEach(btn=>{
+    btn.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      openCoreEscalateModal([btn.dataset.unesc], 'retorno');
     });
   });
   queryAllIn(touchedRows, '[data-unpend]').forEach(btn=>{
