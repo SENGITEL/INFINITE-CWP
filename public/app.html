@@ -698,11 +698,13 @@
   body.hide-tpchange-extra-cols #casesView table td:nth-child(15),
   body.hide-tpchange-extra-cols #casesView table th:nth-child(16),
   body.hide-tpchange-extra-cols #casesView table td:nth-child(16){ display:none; }
-  /* En la hoja "Reportes Eléctricos" solo se oculta la columna 9 (Proceso).
+  /* En la hoja "Reportes Eléctricos" solo se oculta la columna 7 (Proceso).
      Las columnas 17 y 18 ahora son "Hora creación" y "Hora seguimiento" y deben verse
      (antes eran Baterías y Generador, que ya no están en esta tabla). */
-  #electricoTable th:nth-child(9),
-  #electricoTable td:nth-child(9){ display:none; }
+  #electricoTable th:nth-child(7),
+  #electricoTable td:nth-child(7){ display:none; }
+  .aviso-bell.pendiente{ color:#ef4444; }
+  .aviso-bell.atendido{ color:var(--muted, #8a94a6); opacity:.55; }
   .electrico-check{ display:flex; align-items:center; gap:9px; cursor:pointer; user-select:none; }
   .aviso-count-badge{
     display:inline-flex; align-items:center; justify-content:center; min-width:20px; height:20px;
@@ -1508,11 +1510,9 @@
               <th>Aviso</th>
               <th>Gestor</th>
               <th>Estado</th>
-              <th>Fecha de la alarma</th>
               <th>OTS Sev 3</th>
               <th>OTS Sev 4</th>
               <th>Service ID</th>
-              <th>Nombre</th>
               <th>Proceso</th>
               <th>Reporte Eléctrico</th>
               <th>Proveedor</th>
@@ -1791,14 +1791,14 @@ const SEGUIMIENTO_ELECTRICO_OPTIONS = [
 // Dado el texto guardado en r.seguimientoTexto, deduce qué debe mostrar el select
 // (una de las opciones fijas, u "OTRO" si es texto libre) y el valor del campo editable.
 function deriveSeguimientoElectricoState(texto, id){
+  // Ya no existe la opción "Otro, ¿Cuál?": cualquier texto libre guardado antes se conserva
+  // y se muestra como una opción más del select (custom = valor heredado).
   const val = (texto || '').trim();
-  // Si el agente eligió "Otro" a mano, se respeta esa elección aunque el texto todavía esté vacío,
-  // para que el campo de escritura no desaparezca al re-renderizar.
-  if(id && seguimientoOtroSelectedIds.has(id)) return { select:'OTRO', custom:val };
   if(val === '') return { select:'', custom:'' };
   if(SEGUIMIENTO_ELECTRICO_OPTIONS.includes(val)) return { select:val, custom:'' };
-  return { select:'OTRO', custom:val };
+  return { select:val, custom:val };
 }
+const expandedComentarioIds = new Set(); // ids con el campo de comentario de seguimiento desplegado (botón ＋)
 
 // Deduce el proveedor de energía a partir del NIS del sitio asociado al registro:
 // NIS de 7 dígitos -> Naturgy. NIS con otra cantidad de dígitos -> Ensa.
@@ -1831,10 +1831,14 @@ function effectiveProveedorKey(r){
 function reporteResumenTexto(r){
   if(!r.reporteElectricoEnviado) return '';
   const partes = [];
-  if((r.reporteElectricoTexto||'').trim()) partes.push(`Reporte: ${r.reporteElectricoTexto.trim()}`);
+  // Si el estado del reporte es Descargo, el mensaje dice "Descargo: <número>" en vez de "Reporte: <número>".
+  const etiquetaReporte = r.reporteElectricoEstado === 'DESCARGO' ? 'Descargo' : 'Reporte';
+  if((r.reporteElectricoTexto||'').trim()) partes.push(`${etiquetaReporte}: ${r.reporteElectricoTexto.trim()}`);
   const prov = proveedorLabelForRecord(r);
   if(prov) partes.push(`Proveedor: ${prov}`);
-  if((r.seguimientoTexto||'').trim()) partes.push(`Seguimiento: ${r.seguimientoTexto.trim()}`);
+  // El comentario de seguimiento va junto con el seguimiento: "Seguimiento: <opción> - <comentario>".
+  const segTxt = [(r.seguimientoTexto||'').trim(), (r.seguimientoComentario||'').trim()].filter(Boolean).join(' - ');
+  if(segTxt) partes.push(`Seguimiento: ${segTxt}`);
   // Fecha/hora del último movimiento: la del seguimiento si ya hubo uno, si no, la de creación.
   const fechaTs = r.reporteElectricoSeguimientoAt || r.reporteElectricoCreatedAt;
   if(fechaTs){
@@ -3227,18 +3231,16 @@ const ELECTRICO_COL_FILTERS = [
   { key:'gestor', type:'select', options:['Ericsson','Huawei'],
     get: r => r.gestor === 'HUAWEI' ? 'Huawei' : 'Ericsson' },
   { key:'estado', type:'select', options: ESTADOS, get: r => r.estado || '' },
-  { key:'fecha', type:'text', get: r => r.fechaAlarma || '' },
   { key:'sev3', type:'text', get: r => r.otsSev1 || '' },
   { key:'sev4', type:'text', get: r => r.otsSev2 || '' },
   { key:'serviceId', type:'text', get: r => r.serviceId || '' },
-  { key:'nombre', type:'text', get: r => r.nombreSitio || '' },
   { key:null }, // Proceso (columna oculta)
   { key:'reporte', type:'text', get: r => r.reporteElectricoTexto || '' },
   { key:'proveedor', type:'select', options:['Ensa','Naturgy','Otro','Sin proveedor'],
     get: r => { const k = effectiveProveedorKey(r); return k === 'ENSA' ? 'Ensa' : k === 'NATURGY' ? 'Naturgy' : k === '' ? 'Sin proveedor' : 'Otro'; } },
   { key:'estadoReporte', type:'multiselect', options:['Abierto','Descargo','Cerrado','Sin asignar'],
     get: r => ({ ABIERTO:'Abierto', DESCARGO:'Descargo', CERRADO:'Cerrado' })[r.reporteElectricoEstado] || 'Sin asignar' },
-  { key:'seguimiento', type:'text', get: r => r.seguimientoTexto || '' },
+  { key:'seguimiento', type:'text', get: r => [r.seguimientoTexto, r.seguimientoComentario].filter(Boolean).join(' ') },
   { key:'medidor', type:'text', get: r => (lookupSiteById(r.serviceId)||{}).medidor || '' },
   { key:'nis', type:'text', get: r => (lookupSiteById(r.serviceId)||{}).nis || '' },
   { key:'ubicacion', type:'text', get: r => (lookupSiteById(r.serviceId)||{}).ubicacion || '' },
@@ -4812,7 +4814,7 @@ function renderElectrico(){
   if(electricoSearchTerm.trim() !== ''){
     const q = electricoSearchTerm.toLowerCase();
     list = list.filter(r =>
-      [r.serviceId, r.observacion, r.proceso, r.nombreSitio, r.reporteElectricoTexto].some(v => (v||'').toLowerCase().includes(q))
+      [r.serviceId, r.observacion, r.proceso, r.nombreSitio, r.reporteElectricoTexto, r.seguimientoComentario].some(v => (v||'').toLowerCase().includes(q))
     );
   }
 
@@ -4848,19 +4850,17 @@ function renderElectrico(){
       <tr class="est-${cls} ${pendingAviso ? 'aviso-row' : ''}" data-id="${r.id}">
         <td onclick="event.stopPropagation();">
           ${r.seguimientoSolicitado
-            ? `<label class="electrico-check">
+            ? `<label class="electrico-check" title="${pendingAviso ? 'Seguimiento solicitado' + (r.seguimientoSolicitadoCount > 1 ? ' ×'+r.seguimientoSolicitadoCount : '') + ' — marca la casilla cuando lo atiendas' : 'Atendido — desmarca para dejarlo pendiente de nuevo'}">
                 <input type="checkbox" data-toggleaviso="${r.id}" ${r.seguimientoSolicitadoAtendido ? 'checked' : ''} />
-                <span class="lbl">${pendingAviso ? `<span class="aviso-pill">🔔 Seguimiento solicitado${r.seguimientoSolicitadoCount > 1 ? ' ×'+r.seguimientoSolicitadoCount : ''}</span>` : 'Atendido'}</span>
+                <svg class="aviso-bell ${pendingAviso ? 'pendiente' : 'atendido'}" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M12 22a2.5 2.5 0 0 0 2.45-2h-4.9A2.5 2.5 0 0 0 12 22zm7-6V11a7 7 0 0 0-5-6.7V3a2 2 0 0 0-4 0v1.3A7 7 0 0 0 5 11v5l-2 2v1h18v-1l-2-2z"/></svg>
               </label>`
             : '<span class="empty-dash">—</span>'}
         </td>
         <td class="mono">${gestorLabel}</td>
         <td>${badgeHtml(r.estado)}</td>
-        <td class="mono">${dash(r.fechaAlarma)}</td>
         <td class="mono">${ticketCellHtml(r.otsSev1, sharedOts1ColorsElectrico, electricoSearchTerm)}</td>
         <td class="mono">${ticketCellHtml(r.otsSev2, sharedOts2ColorsElectrico, electricoSearchTerm)}</td>
         <td class="mono" style="color:var(--text); font-weight:600;"><span ${sidPillAttrs(r.proceso, r.categoria)} title="${escapeHtml(r.proceso || r.categoria || '')}">${dashHl(r.serviceId, electricoSearchTerm)}</span></td>
-        <td class="obs-text">${dashHl(r.nombreSitio, electricoSearchTerm)}</td>
         <td>${isProcesoCritico(r.proceso) ? `<span class="pill-indisponible">${highlightText(r.proceso, electricoSearchTerm)}</span>` : dashHl(r.proceso, electricoSearchTerm)}</td>
         <td onclick="event.stopPropagation();">
           <div class="copy-cell">
@@ -4889,12 +4889,15 @@ function renderElectrico(){
           </select>
         </td>
         <td onclick="event.stopPropagation();">
-          <select class="inline-select" data-seguimientoselect="${r.id}">
-            <option value="" ${seguimientoState.select==='' ? 'selected' : ''}>—</option>
-            ${SEGUIMIENTO_ELECTRICO_OPTIONS.map(opt => `<option value="${escapeHtml(opt)}" ${seguimientoState.select===opt ? 'selected' : ''}>${escapeHtml(opt)}</option>`).join('')}
-            <option value="OTRO" ${seguimientoState.select==='OTRO' ? 'selected' : ''}>Otro, ¿Cuál?</option>
-          </select>
-          <input type="text" class="inline-input" data-seguimientotexto="${r.id}" value="${escapeHtml(seguimientoState.custom)}" placeholder="Especifique…" style="margin-top:4px; ${seguimientoState.select==='OTRO' ? '' : 'display:none;'}" />
+          <div style="display:flex; gap:4px; align-items:center;">
+            <select class="inline-select" data-seguimientoselect="${r.id}" style="flex:1; min-width:0;">
+              <option value="" ${seguimientoState.select==='' ? 'selected' : ''}>—</option>
+              ${SEGUIMIENTO_ELECTRICO_OPTIONS.map(opt => `<option value="${escapeHtml(opt)}" ${seguimientoState.select===opt ? 'selected' : ''}>${escapeHtml(opt)}</option>`).join('')}
+              ${seguimientoState.custom ? `<option value="${escapeHtml(seguimientoState.custom)}" selected>${escapeHtml(seguimientoState.custom)}</option>` : ''}
+            </select>
+            ${(r.seguimientoComentario || expandedComentarioIds.has(r.id)) ? '' : `<button type="button" class="copy-btn" data-comentariotoggle="${r.id}" title="Agregar comentario" style="font-weight:700;">＋</button>`}
+          </div>
+          ${(r.seguimientoComentario || expandedComentarioIds.has(r.id)) ? `<input type="text" class="inline-input" data-comentario="${r.id}" value="${escapeHtml(r.seguimientoComentario||'')}" placeholder="Comentario…" style="margin-top:4px;" />` : ''}
         </td>
         <td class="mono" onclick="event.stopPropagation();">
           ${site && site.medidor ? `<div class="copy-cell"><span>${escapeHtml(site.medidor)}</span><button type="button" class="copy-btn" data-copy="${escapeHtml(site.medidor)}" title="Copiar">📋</button></div>` : '<span class="empty-dash">—</span>'}
@@ -4906,7 +4909,7 @@ function renderElectrico(){
           ${site && site.ubicacion
             ? (expandedUbicacionIds.has(r.id)
                 ? `<div class="ubic-expanded"><div style="display:flex; gap:6px; align-items:center;"><button type="button" class="ubic-toggle-btn" data-ubictoggle="${r.id}">📍 Ocultar dirección</button><button type="button" class="copy-btn" data-copy="${escapeHtml(site.ubicacion)}" title="Copiar">📋</button></div><div class="obs-text" style="margin-top:6px;">${escapeHtml(site.ubicacion)}</div></div>`
-                : `<button type="button" class="ubic-toggle-btn" data-ubictoggle="${r.id}">📍 Dirección</button>`)
+                : `<div style="display:flex; gap:6px; align-items:center;"><button type="button" class="ubic-toggle-btn" data-ubictoggle="${r.id}">📍 Dirección</button><button type="button" class="copy-btn" data-copy="${escapeHtml(site.ubicacion)}" title="Copiar dirección">📋</button></div>`)
             : '<span class="empty-dash">—</span>'}
         </td>
         <td class="time-cell">${formatDateTime(r.reporteElectricoCreatedAt)}</td>
@@ -4985,19 +4988,32 @@ function renderElectrico(){
     el.addEventListener('blur', ()=>{ isInlineEditing = false; });
     el.addEventListener('input', ()=>{ lastInlineInputAt = Date.now(); });
   }
-  queryAllIn(touchedRows, '[data-seguimientotexto]').forEach(input=>{
+  queryAllIn(touchedRows, '[data-comentariotoggle]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const id = btn.dataset.comentariotoggle;
+      expandedComentarioIds.add(id);
+      isInlineEditing = false;
+      render();
+      let intentos = 0;
+      const enfocar = ()=>{
+        const inp = document.querySelector(`[data-comentario="${id}"]`);
+        if(inp && inp.offsetParent !== null){ inp.focus(); return; }
+        if(++intentos < 30) setTimeout(enfocar, 50);
+      };
+      enfocar();
+    });
+  });
+  queryAllIn(touchedRows, '[data-comentario]').forEach(input=>{
     trackInlineEditing(input);
-    // Mismo autoguardado con debounce que en "Detalle del reporte": no hace falta salir
-    // del campo para que el texto quede guardado.
     let saveTimer = null;
-    const id = input.dataset.seguimientotexto;
+    const id = input.dataset.comentario;
     const commitSilently = async ()=>{
       if(saveTimer){ clearTimeout(saveTimer); saveTimer = null; }
       const rec = records.find(x=>x.id === id);
       if(!rec) return;
-      rec.seguimientoTexto = input.value;
+      rec.seguimientoComentario = input.value;
       rec.reporteElectricoSeguimientoAt = Date.now();
-      // Al diligenciar el seguimiento ya no hace falta marcar "Enviado" aparte: se marca solo.
+      // Igual que el seguimiento: al diligenciarlo se marca "Enviado" para que entre en el resumen.
       if(input.value.trim() !== '') rec.reporteElectricoEnviado = true;
       await saveRecords();
     };
@@ -5005,13 +5021,15 @@ function renderElectrico(){
       if(saveTimer) clearTimeout(saveTimer);
       saveTimer = setTimeout(commitSilently, 700);
     });
-    input.addEventListener('change', async (e)=>{
+    input.addEventListener('change', async ()=>{
       await commitSilently();
+      if(input.value.trim() === '') expandedComentarioIds.delete(id);
       render();
-      showToast('Seguimiento guardado');
+      showToast('Comentario guardado');
     });
     input.addEventListener('blur', async ()=>{
       if(saveTimer) await commitSilently();
+      if(input.value.trim() === '' && expandedComentarioIds.has(id)){ expandedComentarioIds.delete(id); render(); }
     });
   });
   queryAllIn(touchedRows, '[data-seguimientoselect]').forEach(sel=>{
@@ -5019,16 +5037,7 @@ function renderElectrico(){
     sel.addEventListener('change', async (e)=>{
       const id = sel.dataset.seguimientoselect;
       const value = sel.value;
-      if(value === 'OTRO'){
-        // Se marca manualmente para que el campo de texto quede visible y editable
-        // (incluso si aún no se ha escrito nada); el guardado ocurre al confirmar el texto.
-        seguimientoOtroSelectedIds.add(id);
-        render();
-        const input = document.querySelector(`[data-seguimientotexto="${id}"]`);
-        if(input) input.focus();
-        return;
-      }
-      seguimientoOtroSelectedIds.delete(id);
+      isInlineEditing = false; // el select se destruye al repintar y su blur no siempre se dispara
       // Al diligenciar el seguimiento ya no hace falta marcar "Enviado" aparte: se marca solo.
       await touchSeguimiento(id, rec => {
         rec.seguimientoTexto = value;
@@ -5636,7 +5645,7 @@ async function exportElectricoToCSV(){
   if(btn){ btn.disabled = true; btn.textContent = '⏳ Generando…'; }
   try{
     await loadSheetJS();
-    const headers = ['Aviso','Gestor','Estado','Fecha de la alarma','OTS Sev 3','OTS Sev 4','Service ID','Nombre','Proceso','Reporte Eléctrico','Proveedor','Estado de Reporte','Seguimiento','Medidor','NIS','Ubicación','Baterías','Generador','Hora creación','Hora seguimiento','Reporte enviado'];
+    const headers = ['Aviso','Gestor','Estado','OTS Sev 3','OTS Sev 4','Service ID','Proceso','Reporte Eléctrico','Proveedor','Estado de Reporte','Seguimiento','Comentario seguimiento','Medidor','NIS','Ubicación','Baterías','Generador','Hora creación','Hora seguimiento','Reporte enviado'];
     const rows = list.map(r => {
       const site = lookupSiteById(r.serviceId);
       const gestorLabel = r.gestor === 'HUAWEI' ? 'Huawei' : 'Ericsson';
@@ -5645,12 +5654,13 @@ async function exportElectricoToCSV(){
         ? (pendingAviso ? `Seguimiento solicitado${r.seguimientoSolicitadoCount > 1 ? ' x'+r.seguimientoSolicitadoCount : ''}` : 'Atendido')
         : '';
       return [
-        avisoTexto, gestorLabel, r.estado, r.fechaAlarma, r.otsSev1, r.otsSev2,
-        r.serviceId, r.nombreSitio, r.proceso,
+        avisoTexto, gestorLabel, r.estado, r.otsSev1, r.otsSev2,
+        r.serviceId, r.proceso,
         r.reporteElectricoTexto || '',
         proveedorLabelForRecord(r) || '',
         ESTADO_REPORTE_LABELS[r.reporteElectricoEstado] || '',
         r.seguimientoTexto || '',
+        r.seguimientoComentario || '',
         site ? (site.medidor||'') : '',
         site ? (site.nis||'') : '',
         site ? (site.ubicacion||'') : '',
@@ -8386,7 +8396,7 @@ document.addEventListener('contextmenu', (e)=>{
    GRUPO de pestaña, y se vuelve a aplicar cada vez que se cambia de pestaña. */
 const DEFAULT_COL_WIDTHS = {
   casesTable: [110,90,150,130,110,100,160,130,220,60,70,130,100,200,90,140,100,150,160,130,130,130,110],
-  electricoTable: [90,90,110,130,100,100,100,160,130,130,110,120,180,100,90,180,130,130,120,50],
+  electricoTable: [90,90,110,100,100,100,130,130,110,120,200,100,90,180,130,130,120,50],
   sitesTable: [90,160,60,200,90,90,100,90,110,110,130,100,110,110,50]
 };
 
