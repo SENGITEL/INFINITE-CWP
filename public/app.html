@@ -2520,6 +2520,7 @@ function openTkValues(r){
 }
 // Misma regla que tieneOtsBloqueandoCierre (TP Change con OTS Sev 3/4 sin cerrar no se puede cerrar).
 function otsBloqueaCierre(r){
+  return false; // regla retirada (ver tieneOtsBloqueandoCierre)
   if(!(r.tpChange||'').trim()) return false;
   if((r.otsSev1||'').trim() && !r.otsSev1Cerrado) return true;
   if((r.otsSev2||'').trim() && !r.otsSev2Cerrado) return true;
@@ -4157,6 +4158,7 @@ function groupFieldAllClosed(groupRecords, field, closedField){
 // OTS diligenciado no existe forma de marcarlo cerrado por separado, así que
 // el registro queda bloqueado hasta que se borre ese número de OTS.
 function tieneOtsBloqueandoCierre(r){
+  return false; // regla retirada: un registro con TP Change y OTS sin cerrar ahora SÍ se puede cerrar
   if(!(r.tpChange||'').trim()) return false;
   const ots1 = (r.otsSev1||'').trim();
   const ots2 = (r.otsSev2||'').trim();
