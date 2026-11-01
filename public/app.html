@@ -2813,43 +2813,79 @@ async function loadAll(showLoadingText){
   }
 }
 
-async function saveRecords(){
-  // isCommitting se activa aquí mismo (no solo en commitRecordsChange) porque
-  // hay muchas acciones rápidas (escalar, cambiar estado eléctrico, cerrar
-  // caso, registrar salida, etc.) que mutan `records` y llaman a esta función
-  // directamente. Antes, durante el viaje de red de esas acciones, el sondeo
-  // en segundo plano no estaba bloqueado: si llegaba a mitad de camino, leía
-  // del servidor la versión todavía vieja (la de esta acción aún no se había
-  // guardado) y pisaba en pantalla el cambio que la persona ya había visto
-  // aplicado — se sentía como un salto de vuelta al estado anterior. Y como
-  // nada volvía a pintar la pantalla una vez el guardado sí terminaba bien,
-  // el valor correcto solo aparecía hasta el siguiente ciclo de sondeo.
-  // Al activar isCommitting desde el primer renglón (antes de cualquier
-  // "await"), ningún sondeo puede colarse mientras este guardado esté en
-  // vuelo, sin tener que tocar cada uno de esos lugares por separado.
-  isCommitting = true;
+// Los guardados se encolan: si se dispara otro mientras uno va en vuelo (autoguardado de 700 ms,
+// blur, change, cerrar, escalar...), espera su turno en vez de escribir en paralelo.
+// Cada guardado, justo antes de escribir, lee lo último del servidor y lo fusiona por id
+// (mergeById): se aplica solo lo que ESTA persona cambió y se conserva lo que otros gestores
+// guardaron mientras tanto. Antes se subía el arreglo local completo, y si la copia estaba vieja
+// (el sondeo se pausa mientras alguien escribe) se borraban los registros nuevos de los demás.
+let saveRecordsChain = Promise.resolve(), saveRecordsQueued = 0, saveRetryTimer = null;
+function saveRecords(){
+  saveRecordsQueued++;
+  isCommitting = true; // desde el primer renglón, para que ningún sondeo se cuele mientras haya guardados en cola
+  const p = saveRecordsChain.then(doSaveRecords);
+  saveRecordsChain = p.catch(()=>{});
+  return p;
+}
+function sameRecordSet(a, b){
+  if(a.length !== b.length) return false;
+  const m = new Map(a.map(x => [x.id, JSON.stringify(x)]));
+  return b.every(x => m.get(x.id) === JSON.stringify(x));
+}
+async function doSaveRecords(){
   saveEpoch++;
-  // el indicador de arriba ahora también refleja TU guardado (no solo el sondeo en
-  // segundo plano): "guardando…" mientras se escribe, "guardado" cuando termina.
+  // el indicador de arriba refleja TU guardado: "guardando…" mientras se escribe, "guardado" al terminar.
   setSync('guardando…', 'saving');
   try{
+    // 1) lo último que hay en el servidor
+    let server;
+    try{
+      const res = await window.storage.get(STORAGE_KEY, true);
+      server = res && res.value ? JSON.parse(res.value) : [];
+    }catch(e){
+      if(e && e.name === 'auth_expired') throw e;
+      // Si no se pudo leer el servidor no se sabe qué hay allá: si ya había datos sincronizados
+      // no se arriesga a pisarlos; queda pendiente y se reintenta. Solo la primerísima vez se escribe directo.
+      if(lastRecordsRaw && lastRecordsRaw !== '[]') throw e;
+      server = [];
+    }
+    // 2) fusión por id (si algún registro no tiene id no se fusiona, para no perderlo)
+    let fusionTrajoCambios = false;
+    if(records.every(x => x && x.id != null)){
+      let base = [];
+      try{ base = lastRecordsRaw ? JSON.parse(lastRecordsRaw) : []; }catch(e){}
+      const merged = mergeById(base, records, server);
+      fusionTrajoCambios = !sameRecordSet(merged, records);
+      records = merged;
+    }
+    // 3) guardar el resultado fusionado
     const raw = JSON.stringify(records);
     await window.storage.set(STORAGE_KEY, raw, true);
     lastRecordsRaw = raw;
     pendingRecords = false; clearBackupIfDone();
+    clearTimeout(saveRetryTimer); saveRetryTimer = null;
     lastSyncAt = new Date();
     setSync('guardado');
     refreshLastUpdatedLabel();
+    // si la fusión trajo registros de otros gestores, se pintan ya (la fila que se está editando no se toca)
+    if(fusionTrajoCambios) render();
   }catch(e){
+    // Cualquier fallo (no solo sesión vencida) deja el cambio como pendiente, con copia en el
+    // navegador, para que no quede en pantalla un registro que el servidor nunca recibió.
+    const eraPendiente = pendingRecords;
+    pendingRecords = true; backupPending();
     if(e && e.name === 'auth_expired'){
-      pendingRecords = true; backupPending();
       setSync('sesión expirada', 'error');
     } else {
       setSync('error al guardar', 'error');
-      showToast('Error guardando. Intenta de nuevo.', 'error');
+      if(!eraPendiente) showToast('No se pudo guardar. Se reintenta solo; no cierres esta pestaña.', 'error');
+      if(!saveRetryTimer){
+        saveRetryTimer = setTimeout(()=>{ saveRetryTimer = null; if(pendingRecords && !sessionExpired) saveRecords(); }, 5000);
+      }
     }
   } finally {
-    isCommitting = false;
+    saveRecordsQueued--;
+    if(saveRecordsQueued <= 0){ saveRecordsQueued = 0; isCommitting = false; }
   }
 }
 
