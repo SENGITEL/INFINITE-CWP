@@ -5353,19 +5353,31 @@ function reportTableByProvinciaHtml(title, icon, list, columns, emptyMsg){
 // Arma el contenido del reporte de traspaso de turno: KPIs generales y las tablas de
 // críticos, escalados, pendientes y reportes eléctricos activos, para que el próximo
 // gestor entrante vea el estado completo sin tener que revisar pestaña por pestaña.
-function buildShiftSummaryHtml(){
-  const activos = records.filter(r => r.estado !== 'CERRADO').slice()
+// Datos del resumen de turno, compartidos por la vista en pantalla y por el Excel para que
+// los dos muestren siempre los mismos números.
+// "Casos activos" usa el MISMO criterio que el número de las pestañas Ericsson / Huawei:
+// no cuenta CERRADO, INGRESO, SALIDA ni TP (CHANGE) (los ingresos a sitio y los TP Change
+// tienen su propia pestaña). Antes contaba todo lo que no fuera CERRADO, y por eso el total
+// de Huawei salía mayor que el de la pestaña.
+const ESTADOS_FUERA_DE_CASOS_ACTIVOS = ['CERRADO', 'INGRESO', 'SALIDA', 'TP (CHANGE)'];
+function getShiftSummaryData(){
+  const activos = records.filter(r => !ESTADOS_FUERA_DE_CASOS_ACTIVOS.includes(r.estado)).slice()
     .sort((a,b)=> (b.fechaAlarma||'').localeCompare(a.fechaAlarma||''));
   const criticos = activos.filter(r => r.estado === 'EN GESTION');
   const escalados = activos.filter(r => r.estado === 'ESCALADO A IP' || r.estado === 'ESCALADO A DWDM' || r.estado === 'ESCALADO');
   const pendientes = activos.filter(r => r.estado === 'PENDIENTE POR CIERRE');
   const electricoActivos = records.filter(r => r.reporteElectrico && r.estado !== 'CERRADO');
   const avisosPendientes = electricoActivos.filter(r => r.seguimientoSolicitado && !r.seguimientoSolicitadoAtendido).length;
-
   const ericssonActivos = activos.filter(r => (r.gestor||'ERICSSON') === 'ERICSSON').length;
   const huaweiActivos = activos.filter(r => r.gestor === 'HUAWEI').length;
-
+  // registros con un gestor distinto de ERICSSON/HUAWEI: no entran en ninguno de los dos, se muestran aparte
+  const otrosActivos = activos.length - ericssonActivos - huaweiActivos;
+  const detalleGestor = `Ericsson ${ericssonActivos} · Huawei ${huaweiActivos}` + (otrosActivos ? ` · Otros ${otrosActivos}` : '');
   const generadoEn = new Date().toLocaleString('es-CO', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
+  return { activos, criticos, escalados, pendientes, electricoActivos, avisosPendientes, ericssonActivos, huaweiActivos, otrosActivos, detalleGestor, generadoEn };
+}
+function buildShiftSummaryHtml(){
+  const { activos, criticos, escalados, pendientes, electricoActivos, avisosPendientes, detalleGestor, generadoEn } = getShiftSummaryData();
 
   return `
     <div class="report-meta">
@@ -5376,7 +5388,7 @@ function buildShiftSummaryHtml(){
       <div class="report-kpi">
         <span class="n">${activos.length}</span>
         <span class="l">Casos activos</span>
-        <span class="s">Ericsson ${ericssonActivos} · Huawei ${huaweiActivos}</span>
+        <span class="s">${escapeHtml(detalleGestor)}</span>
       </div>
       <div class="report-kpi">
         <span class="n">${criticos.length}</span>
@@ -5532,16 +5544,7 @@ async function downloadShiftSummaryExcel(){
     if(btn){ btn.disabled = true; btn.textContent = '⏳ Generando…'; }
     await loadSheetJS();
 
-    const activos = records.filter(r => r.estado !== 'CERRADO').slice()
-      .sort((a,b)=> (b.fechaAlarma||'').localeCompare(a.fechaAlarma||''));
-    const criticos = activos.filter(r => r.estado === 'EN GESTION');
-    const escalados = activos.filter(r => r.estado === 'ESCALADO A IP' || r.estado === 'ESCALADO A DWDM' || r.estado === 'ESCALADO');
-const pendientes = activos.filter(r => r.estado === 'PENDIENTE POR CIERRE');
-    const electricoActivos = records.filter(r => r.reporteElectrico && r.estado !== 'CERRADO');
-    const avisosPendientes = electricoActivos.filter(r => r.seguimientoSolicitado && !r.seguimientoSolicitadoAtendido).length;
-    const ericssonActivos = activos.filter(r => (r.gestor||'ERICSSON') === 'ERICSSON').length;
-    const huaweiActivos = activos.filter(r => r.gestor === 'HUAWEI').length;
-    const generadoEn = new Date().toLocaleString('es-CO', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
+    const { activos, criticos, escalados, pendientes, electricoActivos, avisosPendientes, detalleGestor, generadoEn } = getShiftSummaryData();
 
     const wb = XLSX.utils.book_new();
 
@@ -5552,7 +5555,7 @@ const pendientes = activos.filter(r => r.estado === 'PENDIENTE POR CIERRE');
       ['Generado', generadoEn],
       [],
       ['Indicador', 'Total', 'Detalle'],
-      ['Casos activos', activos.length, `Ericsson ${ericssonActivos} · Huawei ${huaweiActivos}`],
+      ['Casos activos', activos.length, detalleGestor],
       ['Críticos · En Gestión', criticos.length, ''],
       ...provinciaRows,
       ['Escalados IP / DWDM', escalados.length, ''],
