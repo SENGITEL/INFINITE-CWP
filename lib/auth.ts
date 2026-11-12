@@ -98,6 +98,7 @@ function getUsers(): Record<string, string> {
     Ricardo: "infinite26",
     Nelson: "infinite26",
     Pedro: "infinite26",
+    Helmer: "infinite26",
   }
 }
 
