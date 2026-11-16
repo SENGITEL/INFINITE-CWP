@@ -326,6 +326,13 @@
   #caidosFrame{ width:100%; min-height:520px; border:0; display:block; background:transparent; }
   .tab.active[data-tab="SITES"]{ background:var(--panel); color:var(--accent); border-color:var(--accent); box-shadow:0 -2px 12px -4px var(--accent-glow); }
 
+  /* ---------------- INTEGRACIÓN MIM/CELDAS EN PESTAÑAS ---------------- */
+  #caidosFrame, #celdasFrame{ display:block; width:100%; height:70vh; border:0; border-radius:8px; background:transparent; }
+  .tab[data-tab="CELDAS"]{ --tab-color:var(--accent); }
+  .tab.active[data-tab="CELDAS"]{ background:var(--accent); color:#001a14; border-color:var(--accent); box-shadow:0 -2px 12px -4px var(--accent-glow); }
+  .tab.active[data-tab="CELDAS"] .count{ background:rgba(0,0,0,0.2); color:#001a14; }
+  body.domain-core .tab[data-tab="CAIDOS"], body.domain-core .tab[data-tab="CELDAS"], body.domain-core #caidosView, body.domain-core #celdasView{ display:none !important; }
+
   .tab-panel{
     background:var(--panel); border:1px solid var(--line); border-radius:0 12px 12px 12px;
     padding:18px; margin-bottom:0; box-shadow: var(--shadow-panel);
@@ -1347,8 +1354,8 @@
       <button class="btn-ghost" id="notifBtn" style="display:none;" title="Permitir que el navegador te avise cuando un TP Change cumpla su hora de cierre">🔔 Activar avisos</button>
       <button class="btn-ghost" id="themeToggleBtn" title="Cambiar entre modo oscuro y claro" aria-label="Cambiar tema">🌙</button>
       <button class="btn-ghost" id="idqBtn" title="Consultar ID: sitio por Id, Medidor o NIS (Ctrl+K)" aria-label="Consultar ID">🔎</button>
-      <button class="btn-ghost btn-mim" id="mimBtn" title="MIM · Sitios caídos (se abre en otra ventana)" aria-label="MIM">⚠ <span class="count" id="countCaidos">0</span></button>
-      <button class="btn-ghost btn-celdas" id="celdasBtn" title="Celdas caídas (se abre en otra ventana)" aria-label="Celdas caídas">📡 <span class="count" id="countCeldas">0</span></button>
+      <button class="btn-ghost btn-mim" id="mimBtn" title="MIM · Sitios caídos" aria-label="MIM">⚠ <span class="count" id="countCaidos">0</span></button>
+      <button class="btn-ghost btn-celdas" id="celdasBtn" title="Celdas caídas" aria-label="Celdas caídas">📡 <span class="count" id="countCeldas">0</span></button>
       <button class="btn-ghost" id="exportBtn">⬇ Exportar Excel</button>
       <button class="btn-ghost" id="archBtn" style="display:none;" title="Cerrados archivados (más viejos que el plazo): buscar, reabrir, exportar o archivar más">🗄 Archivo</button>
       <button class="btn-ghost" id="shiftSummaryBtn">📋 Resumen de turno</button>
@@ -1448,6 +1455,8 @@
     <button class="tab" data-tab="CERRADOS">Cerrados <span class="count" id="countCerrados">0</span></button>
     <button class="tab" data-tab="TPCHANGE">TP Change <span class="count" id="countTpChange">0</span><span id="tabTpAlertDot" style="display:none; width:8px; height:8px; border-radius:50%; background:var(--danger); margin-left:2px; animation: aviso-pulse 1.6s infinite;"></span></button>
     <button class="tab" data-tab="ELECTRICO">Reportes Eléctricos <span class="count" id="countElectrico">0</span><span id="tabAvisoDot" style="display:none; width:8px; height:8px; border-radius:50%; background:var(--danger); margin-left:2px; animation: aviso-pulse 1.6s infinite;"></span></button>
+    <button class="tab" data-tab="CAIDOS">⚠ MIM <span class="count" id="countCaidosTab">0</span></button>
+    <button class="tab" data-tab="CELDAS">📡 Celdas <span class="count" id="countCeldasTab">0</span></button>
     <button class="tab" data-tab="SITES">Site ID – Name <span class="count" id="countSites">0</span></button>
   </div>
 
@@ -1536,6 +1545,7 @@
 
     <!-- MIM · SITIOS CAÍDOS -->
     <div id="caidosView" style="display:none;"><iframe id="caidosFrame" title="MIM"></iframe></div>
+    <div id="celdasView" style="display:none;"><iframe id="celdasFrame" title="Celdas"></iframe></div>
 
     <!-- SITES DB VIEW -->
     <div id="sitesView" style="display:none;">
@@ -3143,6 +3153,17 @@ function siteHintClass(vip, seguridad){
 
 /* ---------------- TABS ---------------- */
 
+/* INTEGRACIÓN MIM/CELDAS EN PESTAÑAS: ajusta el alto de las vistas al espacio libre de la ventana */
+window.fitEmbeddedFrames = function(){
+  ['caidosFrame','celdasFrame'].forEach(function(id){
+    var f = document.getElementById(id);
+    if(!f || !f.offsetParent) return;
+    var top = f.getBoundingClientRect().top;
+    f.style.height = Math.max(520, window.innerHeight - top - 28) + 'px';
+  });
+};
+window.addEventListener('resize', function(){ window.fitEmbeddedFrames(); });
+
 function switchTab(tab){
   activeTab = tab;
   // CORE: la hoja principal se divide por país; fuera de ella no se arrastra el filtro de país.
@@ -3157,7 +3178,11 @@ function switchTab(tab){
   document.getElementById('electricoView').style.display = (tab === 'ELECTRICO') ? 'block' : 'none';
   document.getElementById('sitesView').style.display = (tab === 'SITES') ? 'block' : 'none';
   document.getElementById('caidosView').style.display = (tab === 'CAIDOS') ? 'block' : 'none';
+  document.getElementById('celdasView').style.display = (tab === 'CELDAS') ? 'block' : 'none';
   if(tab === 'CAIDOS' && window.ensureCaidosFrame) window.ensureCaidosFrame();
+  if(tab === 'CELDAS' && window.ensureCeldasFrame) window.ensureCeldasFrame();
+  if((tab === 'CAIDOS' || tab === 'CELDAS') && window.alarmFeed) window.alarmFeed.sendTo(tab === 'CAIDOS' ? 'mim' : 'celdas');
+  requestAnimationFrame(function(){ if(window.fitEmbeddedFrames) window.fitEmbeddedFrames(); });
   document.getElementById('newBtn').style.display = (tab === 'ERICSSON' || tab === 'HUAWEI') ? 'inline-block' : 'none';
   document.getElementById('exportBtn').style.display = (tab === 'ERICSSON' || tab === 'HUAWEI' || tab === 'INGRESOS' || tab === 'CERRADOS' || tab === 'TPCHANGE') ? 'inline-block' : 'none';
   document.getElementById('archBtn').style.display = (tab === 'CERRADOS') ? 'inline-block' : 'none';
@@ -3857,6 +3882,9 @@ function renderInner(){
 
   if(activeTab === 'CAIDOS'){
     if(window.mimSync) window.mimSync();
+    return;
+  }
+  if(activeTab === 'CELDAS'){
     return;
   }
   if(activeTab === 'SITES'){
@@ -8853,22 +8881,25 @@ loadAll(true).then(offerPendingRestore).then(archLoadIndex);
     sendTk();
   };
 
-  // Abre MIM en una ventana aparte (debe llamarse desde un clic para que el navegador no la bloquee).
-  window.openMimWindow = function(){
-    if(alive()){ popup.focus(); return; }
-    ready = false; baseSent = null;
-    popup = window.open('', 'noc-mim', 'width=1320,height=880');
-    if(!popup){
-      if(window.showToast) showToast('El navegador bloqueó la ventana de MIM. Permite las ventanas emergentes para este sitio.', 'error');
-      return;
+  // MIM vive dentro de la app, en la pestaña "MIM" (ya no se abre en una ventana aparte).
+  // La primera vez que se abre carga el iframe; después se conserva al cambiar de pestaña.
+  function ensureFrame(){
+    var f = document.getElementById('caidosFrame');
+    if(!f) return;
+    if(!f.getAttribute('data-cargado')){
+      ready = false; baseSent = null;
+      f.setAttribute('data-cargado', '1');
+      f.srcdoc = MIM_HTML;
     }
-    popup.document.open();
-    popup.document.write(WRAPPER);
-    popup.document.close();
+    popup = f.contentWindow;
+  }
+  window.openMimWindow = function(){
+    if(typeof switchTab === 'function' && activeTab !== 'CAIDOS') switchTab('CAIDOS');
+    else ensureFrame();
   };
-  window.ensureCaidosFrame = window.openMimWindow;
+  window.ensureCaidosFrame = ensureFrame;
   window.__feedPopups = window.__feedPopups || {};
-  window.__feedPopups.mim = function(){ return alive() ? popup : null; };
+  window.__feedPopups.mim = function(){ return (alive() && activeTab === 'CAIDOS') ? popup : null; };
 
   window.addEventListener('message', function(e){
     var d = e.data;
@@ -8876,6 +8907,8 @@ loadAll(true).then(offerPendingRestore).then(archLoadIndex);
     if(d.type === 'sitios-caidos'){
       var el = document.getElementById('countCaidos');
       if(el) el.textContent = d.down;
+      var elT = document.getElementById('countCaidosTab');
+      if(elT) elT.textContent = d.down;
     }else if(d.type === 'mim-ready'){
       ready = true; baseSent = null;
       procSent = null; tkSent = null; sendTheme(); sendBase(); sendProc(); sendTk();
@@ -8938,19 +8971,22 @@ loadAll(true).then(offerPendingRestore).then(archLoadIndex);
     post({type:'celdas-base', sites:sites, ots:otsSev3(), ots4:otsSev4()});
   }
 
-  // Debe llamarse desde un clic para que el navegador no bloquee la ventana.
-  window.openCeldasWindow = function(){
-    if(alive()){ popup.focus(); return; }
-    ready = false; baseSent = null;
-    popup = window.open('', 'noc-celdas', 'width=1320,height=880');
-    if(!popup){
-      if(window.showToast) showToast('El navegador bloqueó la ventana de Celdas. Permite las ventanas emergentes para este sitio.', 'error');
-      return;
+  // Celdas vive dentro de la app, en la pestaña "Celdas" (ya no se abre en una ventana aparte).
+  function ensureFrame(){
+    var f = document.getElementById('celdasFrame');
+    if(!f) return;
+    if(!f.getAttribute('data-cargado')){
+      ready = false; baseSent = null;
+      f.setAttribute('data-cargado', '1');
+      f.srcdoc = CELDAS_HTML;
     }
-    popup.document.open();
-    popup.document.write(WRAPPER);
-    popup.document.close();
+    popup = f.contentWindow;
+  }
+  window.openCeldasWindow = function(){
+    if(typeof switchTab === 'function' && activeTab !== 'CELDAS') switchTab('CELDAS');
+    else ensureFrame();
   };
+  window.ensureCeldasFrame = ensureFrame;
 
   window.addEventListener('message', function(e){
     var d = e.data;
@@ -8962,6 +8998,8 @@ loadAll(true).then(offerPendingRestore).then(archLoadIndex);
     }else if(d.type === 'celdas-count'){
       var el = document.getElementById('countCeldas');
       if(el) el.textContent = d.down;
+      var elT = document.getElementById('countCeldasTab');
+      if(elT) elT.textContent = d.down;
     }
   });
   new MutationObserver(sendTheme).observe(document.body, {attributes:true, attributeFilter:['class']});
@@ -8971,7 +9009,7 @@ loadAll(true).then(offerPendingRestore).then(archLoadIndex);
   }, 5000);
 
   window.__feedPopups = window.__feedPopups || {};
-  window.__feedPopups.celdas = function(){ return alive() ? popup : null; };
+  window.__feedPopups.celdas = function(){ return (alive() && activeTab === 'CELDAS') ? popup : null; };
   var btn = document.getElementById('celdasBtn');
   if(btn) btn.addEventListener('click', function(){ window.openCeldasWindow(); });
 })();
